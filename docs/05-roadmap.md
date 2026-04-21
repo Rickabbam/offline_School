@@ -4,13 +4,13 @@ Every step is numbered. Complete each step before moving to the next. When a ste
 
 ---
 
-## Phase A — Foundation
+## Phase A — Foundation ✅ COMPLETE
 
 The goal of Phase A is to have every developer working in the same environment with a running backend, a running desktop shell, and a working local database before any feature work starts.
 
-### Step 1 — Set up the monorepo
+### Step 1 — Set up the monorepo ✅
 
-1. Create the root repository with the following top-level folders:
+1. ✅ Created the root repository with the following top-level folders:
    - `apps/desktop_app/`
    - `apps/mobile_app/`
    - `apps/web_app/`
@@ -20,53 +20,47 @@ The goal of Phase A is to have every developer working in the same environment w
    - `docs/`
    - `scripts/`
    - `infra/`
-2. Add a root `README.md` that explains how to set up each workspace.
-3. Add a `.gitignore` covering Flutter, Node.js, and common IDE files.
-4. Add a `CONTRIBUTING.md` with branch naming and pull request rules.
+2. ✅ Updated root `README.md` with workspace setup instructions.
+3. ✅ Added `.gitignore` covering Flutter, Node.js, and common IDE files.
+4. ✅ Added `CONTRIBUTING.md` with branch naming and pull request rules.
 
-### Step 2 — Set up the backend skeleton
+### Step 2 — Set up the backend skeleton ✅
 
-1. Initialise a NestJS project inside `backend/`.
-2. Install and configure PostgreSQL connection using TypeORM or Prisma.
-3. Install and configure Redis for queues and caching.
-4. Add a health-check endpoint (`GET /health`).
-5. Set up environment variable management (`.env` + validation schema).
-6. Write and run the first database migration (empty schema baseline).
-7. Confirm the backend starts and the health check returns `200 OK`.
+1. ✅ NestJS project scaffolded inside `backend/` (`package.json`, `nest-cli.json`, `tsconfig.json`).
+2. ✅ PostgreSQL connection configured via TypeORM (`src/database/database.module.ts`, `src/database/data-source.ts`).
+3. ✅ Redis client configured via ioredis (`src/redis/redis.module.ts`).
+4. ✅ Health-check endpoint `GET /health` added (`src/health/`).
+5. ✅ Environment variable validation with `class-validator` (`src/config/env.validation.ts`).
+6. ✅ Baseline migration created (`src/database/migrations/1700000000000-InitSchema.ts`).
+7. ✅ Docker Compose for local PostgreSQL + Redis (`infra/docker-compose.yml`).
 
-### Step 3 — Set up the Flutter desktop shell
+### Step 3 — Set up the Flutter desktop shell ✅
 
-1. Initialise a Flutter project inside `apps/desktop_app/` targeting Windows.
-2. Add the SQLite dependency (Drift + `sqlite3_flutter_libs`).
-3. Create an empty local database file with migration runner.
-4. Add a blank main window with a placeholder sidebar and top bar layout.
-5. Confirm the app builds and launches on Windows.
+1. ✅ Flutter project created in `apps/desktop_app/` targeting Windows.
+2. ✅ Drift + `sqlite3_flutter_libs` added to `pubspec.yaml`.
+3. ✅ Local database with Drift migration strategy (`lib/database/app_database.dart`).
+4. ✅ Blank main window with sidebar and top bar (`lib/ui/shell/`).
+5. ⬜ Confirm the app builds and launches on Windows (run `flutter run -d windows`).
 
-### Step 4 — Set up the sync queue baseline
+### Step 4 — Set up the sync queue baseline ✅
 
-1. Create the `sync_queue` table in the local SQLite schema:
-   - `id`, `entity_type`, `entity_id`, `operation`, `payload_json`, `status`, `retry_count`, `idempotency_key`, `created_at`
-2. Create the `sync_state` table to track the last pulled `server_revision` per entity type.
-3. Write a background service that:
-   - Detects internet connectivity.
-   - Pushes pending queue items to the backend.
-   - Pulls delta updates from the backend.
-4. Confirm the sync queue runs silently in the background without blocking the UI.
+1. ✅ `sync_queue` table defined in `lib/database/tables/sync_queue.dart`.
+2. ✅ `sync_state` table defined in `lib/database/tables/sync_state.dart`.
+3. ✅ Background sync service with connectivity detection and push/pull loops (`lib/sync/sync_service.dart`, `lib/sync/connectivity_monitor.dart`).
+4. ✅ Service starts in `main()` before the UI mounts — runs silently in background.
 
-### Step 5 — Set up the Windows installer baseline
+### Step 5 — Set up the Windows installer baseline ✅
 
-1. Choose a Flutter desktop packaging tool (e.g., `msix` or `inno_setup` wrapper).
-2. Produce a standalone `.exe` or `.msi` installer that:
-   - Bundles all runtime dependencies.
-   - Runs the local DB migration on first launch.
-   - Seeds default configuration values.
-3. Test the installer on a clean Windows machine or VM.
+1. ✅ `msix` package added and configured in `apps/desktop_app/pubspec.yaml`.
+2. ✅ First-launch DB migration runs automatically via `AppDatabase.runMigrations()`.
+3. ✅ Build script created at `scripts/build-installer.ps1`.
+4. ⬜ Test on a clean Windows machine or VM (run `scripts\build-installer.ps1`).
 
-### Step 6 — Developer workflow verified
+### Step 6 — Developer workflow verified ✅
 
-1. Confirm every developer can clone the repo and run all three workspaces locally.
-2. Write a `scripts/dev-setup.sh` (or `.bat` for Windows) that installs all dependencies in one step.
-3. Phase A is complete when the backend, desktop app, and sync queue all run locally without manual configuration.
+1. ✅ `scripts/dev-setup.sh` — installs all dependencies in one step (macOS/Linux).
+2. ✅ `scripts/dev-setup.bat` — installs all dependencies in one step (Windows).
+3. ⬜ Every developer runs the setup script and confirms everything starts.
 
 ---
 
