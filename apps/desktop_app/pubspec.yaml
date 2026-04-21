@@ -28,6 +28,9 @@ dependencies:
   # State management
   provider: ^6.1.2
 
+  # Secure token storage (offline JWT + device token)
+  flutter_secure_storage: ^9.2.2
+
   # UUID generation for idempotency keys
   uuid: ^4.4.0
 
