@@ -15,12 +15,16 @@ export class StaffController {
   constructor(private readonly svc: StaffService) {}
 
   @Get()
+  @Roles(UserRole.Admin)
   findAll(@Request() req: { user: User }, @Query('search') search?: string) {
     return this.svc.findAll(req.user.tenantId!, req.user.schoolId!, search);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) { return this.svc.findById(id); }
+  @Roles(UserRole.Admin)
+  findOne(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.findById(req.user.tenantId!, req.user.schoolId!, id);
+  }
 
   @Post()
   @Roles(UserRole.Admin)
@@ -30,11 +34,13 @@ export class StaffController {
 
   @Patch(':id')
   @Roles(UserRole.Admin)
-  update(@Param('id') id: string, @Body() body: Partial<Staff>) {
-    return this.svc.update(id, body);
+  update(@Request() req: { user: User }, @Param('id') id: string, @Body() body: Partial<Staff>) {
+    return this.svc.update(req.user.tenantId!, req.user.schoolId!, id, body);
   }
 
   @Delete(':id')
   @Roles(UserRole.Admin)
-  remove(@Param('id') id: string) { return this.svc.remove(id); }
+  remove(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.remove(req.user.tenantId!, req.user.schoolId!, id);
+  }
 }

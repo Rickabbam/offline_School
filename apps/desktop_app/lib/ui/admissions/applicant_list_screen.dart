@@ -68,7 +68,7 @@ class _ApplicantListScreenState extends State<ApplicantListScreen> {
         ),
         const Divider(height: 1),
         Expanded(
-          child: FutureBuilder<List<ApplicantData>>(
+          child: FutureBuilder<List<Applicant>>(
             future: db.getApplicants(status: _filterStatus),
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {

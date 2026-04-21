@@ -14,8 +14,10 @@ export class CampusesService {
     return this.repo.find({ where });
   }
 
-  findById(id: string) {
-    return this.repo.findOne({ where: { id, deleted: false } });
+  findById(tenantId: string, id: string, schoolId?: string) {
+    const where: Record<string, unknown> = { id, tenantId, deleted: false };
+    if (schoolId) where['schoolId'] = schoolId;
+    return this.repo.findOne({ where });
   }
 
   async create(data: Partial<Campus>) {
@@ -26,13 +28,23 @@ export class CampusesService {
     return this.repo.save(campus);
   }
 
-  async update(id: string, data: Partial<Campus>) {
+  async update(tenantId: string, id: string, data: Partial<Campus>, schoolId?: string) {
+    const campus = await this.repo.findOne({
+      where: schoolId
+          ? { id, tenantId, schoolId, deleted: false }
+          : { id, tenantId, deleted: false },
+    });
+    if (!campus) throw new NotFoundException('Campus not found.');
     await this.repo.update(id, data);
-    return this.findById(id);
+    return this.findById(tenantId, id, schoolId);
   }
 
-  async remove(id: string) {
-    const campus = await this.repo.findOne({ where: { id } });
+  async remove(tenantId: string, id: string, schoolId?: string) {
+    const campus = await this.repo.findOne({
+      where: schoolId
+          ? { id, tenantId, schoolId, deleted: false }
+          : { id, tenantId, deleted: false },
+    });
     if (!campus) throw new NotFoundException('Campus not found.');
     await this.repo.update(id, { deleted: true });
   }

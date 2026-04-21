@@ -48,6 +48,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token.');
     }
 
+    if (payload.tokenType !== 'refresh') {
+      throw new UnauthorizedException('Invalid refresh token.');
+    }
+
     const user = await this.users.findOne({
       where: { id: payload.sub, deleted: false, isActive: true },
     });
@@ -106,7 +110,7 @@ export class AuthService {
   }
 
   private issueTokenPair(user: User) {
-    const payload: JwtPayload = {
+    const basePayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
@@ -115,8 +119,14 @@ export class AuthService {
       campusId: user.campusId,
     };
 
-    const accessToken = this.jwt.sign(payload, { expiresIn: '15m' });
-    const refreshToken = this.jwt.sign(payload, { expiresIn: '30d' });
+    const accessToken = this.jwt.sign(
+      { ...basePayload, tokenType: 'access' } satisfies JwtPayload,
+      { expiresIn: '15m' },
+    );
+    const refreshToken = this.jwt.sign(
+      { ...basePayload, tokenType: 'refresh' } satisfies JwtPayload,
+      { expiresIn: '30d' },
+    );
 
     return {
       accessToken,

@@ -16,8 +16,8 @@ export class AttendanceService {
     });
   }
 
-  findByStudent(studentId: string, termId?: string) {
-    const where: Record<string, unknown> = { studentId, deleted: false };
+  findByStudent(tenantId: string, schoolId: string, studentId: string, termId?: string) {
+    const where: Record<string, unknown> = { tenantId, schoolId, studentId, deleted: false };
     if (termId) where['termId'] = termId;
     return this.repo.find({ where });
   }
@@ -29,6 +29,8 @@ export class AttendanceService {
   async upsert(tenantId: string, schoolId: string, data: Partial<AttendanceRecord>) {
     const existing = await this.repo.findOne({
       where: {
+        tenantId,
+        schoolId,
         studentId: data.studentId,
         classArmId: data.classArmId,
         attendanceDate: data.attendanceDate,
@@ -65,13 +67,14 @@ export class AttendanceService {
   /**
    * Summary: count by status for a class arm within a term.
    */
-  async summary(schoolId: string, classArmId: string, termId: string) {
+  async summary(tenantId: string, schoolId: string, classArmId: string, termId: string) {
     const rows = await this.repo
       .createQueryBuilder('a')
       .select('a.student_id', 'studentId')
       .addSelect('a.status', 'status')
       .addSelect('COUNT(*)', 'count')
-      .where('a.school_id = :schoolId', { schoolId })
+      .where('a.tenant_id = :tenantId', { tenantId })
+      .andWhere('a.school_id = :schoolId', { schoolId })
       .andWhere('a.class_arm_id = :classArmId', { classArmId })
       .andWhere('a.term_id = :termId', { termId })
       .andWhere('a.deleted = false')

@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
 import 'package:uuid/uuid.dart';
 
@@ -53,7 +55,7 @@ enum AuthState { unknown, authenticated, unauthenticated }
 ///
 /// On startup, [initialise] checks for a stored token.
 /// The rest of the app reads [currentUser] and [state] to decide what to show.
-class AuthService {
+class AuthService extends ChangeNotifier {
   AuthService({String? backendBaseUrl})
       : _baseUrl = backendBaseUrl ??
             const String.fromEnvironment(
@@ -67,33 +69,35 @@ class AuthService {
   final _uuid = const Uuid();
 
   late final Dio _dio;
+  Future<void>? _refreshFuture;
 
   AuthUser? _currentUser;
   AuthState _state = AuthState.unknown;
+  bool _isOfflineSession = false;
 
   AuthUser? get currentUser => _currentUser;
   AuthState get state => _state;
   bool get isAuthenticated => _state == AuthState.authenticated;
+  bool get isOfflineSession => _isOfflineSession;
 
   /// Call once at app startup. Attempts to restore session from stored tokens.
   Future<void> initialise() async {
-    _dio = Dio(BaseOptions(
-      baseUrl: _baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 30),
-    ));
+    _dio = _buildDio();
 
     final userJson = await _storage.getUserJson();
     if (userJson == null) {
-      _state = AuthState.unauthenticated;
+      _setUnauthenticated();
       return;
     }
 
     final accessToken = await _storage.getAccessToken();
     if (accessToken != null) {
-      _currentUser = AuthUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
-      _state = AuthState.authenticated;
+      _currentUser =
+          AuthUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
       _dio.options.headers['Authorization'] = 'Bearer $accessToken';
+      _isOfflineSession = false;
+      _state = AuthState.authenticated;
+      notifyListeners();
       return;
     }
 
@@ -112,13 +116,16 @@ class AuthService {
     final offlineToken = await _storage.getOfflineToken();
     final fingerprint = await _storage.getDeviceFingerprint();
     if (offlineToken != null && fingerprint != null) {
-      _currentUser = AuthUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
+      _currentUser =
+          AuthUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
+      _isOfflineSession = true;
       _state = AuthState.authenticated;
       _logger.i('Authenticated offline via device token.');
+      notifyListeners();
       return;
     }
 
-    _state = AuthState.unauthenticated;
+    _setUnauthenticated();
   }
 
   /// Online email + password login.
@@ -139,8 +146,13 @@ class AuthService {
     await _storage.saveUserJson(jsonEncode(user.toJson()));
 
     _dio.options.headers['Authorization'] = 'Bearer ${data['accessToken']}';
-    _currentUser = user;
-    _state = AuthState.authenticated;
+    _setAuthenticated(user, isOfflineSession: false);
+
+    try {
+      await ensureTrustedDeviceRegistered();
+    } catch (e) {
+      _logger.w('Trusted-device registration failed after login: $e');
+    }
 
     return user;
   }
@@ -165,10 +177,20 @@ class AuthService {
     return offlineToken;
   }
 
+  Future<void> ensureTrustedDeviceRegistered([String? deviceName]) async {
+    final existingToken = await _storage.getOfflineToken();
+    if (existingToken != null) return;
+
+    final resolvedDeviceName = deviceName?.trim().isNotEmpty == true
+        ? deviceName!.trim()
+        : _defaultDeviceName();
+    await registerDevice(resolvedDeviceName);
+    notifyListeners();
+  }
+
   Future<void> logout() async {
     await _storage.clearAll();
-    _currentUser = null;
-    _state = AuthState.unauthenticated;
+    _setUnauthenticated();
   }
 
   Future<void> _refreshOnline(String refreshToken) async {
@@ -184,7 +206,141 @@ class AuthService {
     await _storage.saveUserJson(jsonEncode(user.toJson()));
 
     _dio.options.headers['Authorization'] = 'Bearer ${data['accessToken']}';
+    _setAuthenticated(user, isOfflineSession: false);
+  }
+
+  Dio createAuthenticatedClient() {
+    if (_currentUser == null) {
+      throw StateError('No authenticated user available.');
+    }
+
+    final dio = _buildDio();
+    dio.interceptors.add(
+      QueuedInterceptorsWrapper(
+        onRequest: (options, handler) async {
+          if (_isOfflineSession) {
+            handler.reject(
+              DioException(
+                requestOptions: options,
+                error: 'This action requires an online session.',
+                type: DioExceptionType.badResponse,
+                response: Response(
+                  requestOptions: options,
+                  statusCode: 401,
+                  statusMessage: 'Offline session',
+                ),
+              ),
+            );
+            return;
+          }
+
+          final authHeader = _dio.options.headers['Authorization'];
+          if (authHeader != null) {
+            options.headers['Authorization'] = authHeader;
+          }
+          handler.next(options);
+        },
+        onError: (error, handler) async {
+          final statusCode = error.response?.statusCode;
+          final alreadyRetried = error.requestOptions.extra['retried'] == true;
+
+          if (statusCode != 401 || alreadyRetried || _isOfflineSession) {
+            handler.next(error);
+            return;
+          }
+
+          try {
+            await _refreshAccessTokenIfNeeded();
+            final retryOptions = Options(
+              method: error.requestOptions.method,
+              headers: Map<String, dynamic>.from(error.requestOptions.headers)
+                ..['Authorization'] = _dio.options.headers['Authorization'],
+              responseType: error.requestOptions.responseType,
+              contentType: error.requestOptions.contentType,
+              sendTimeout: error.requestOptions.sendTimeout,
+              receiveTimeout: error.requestOptions.receiveTimeout,
+              extra: Map<String, dynamic>.from(error.requestOptions.extra)
+                ..['retried'] = true,
+            );
+
+            final response = await dio.request<dynamic>(
+              error.requestOptions.path,
+              data: error.requestOptions.data,
+              queryParameters: error.requestOptions.queryParameters,
+              options: retryOptions,
+            );
+            handler.resolve(response);
+          } catch (_) {
+            handler.next(error);
+          }
+        },
+      ),
+    );
+    return dio;
+  }
+
+  AuthUser updateCurrentUserFromJson(Map<String, dynamic> json) {
+    final user = AuthUser.fromJson(json);
+    _storage.saveUserJson(jsonEncode(user.toJson()));
+    _setAuthenticated(user, isOfflineSession: _isOfflineSession);
+    return user;
+  }
+
+  Dio _buildDio() {
+    return Dio(BaseOptions(
+      baseUrl: _baseUrl,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 30),
+    ));
+  }
+
+  String _defaultDeviceName() {
+    final host = Platform.localHostname.trim();
+    return host.isEmpty ? 'Offline School Desktop' : host;
+  }
+
+  Future<void> _refreshAccessTokenIfNeeded() async {
+    if (_refreshFuture != null) {
+      await _refreshFuture;
+      return;
+    }
+
+    final refreshToken = await _storage.getRefreshToken();
+    if (refreshToken == null) {
+      await _handleRefreshFailure();
+      throw StateError('No refresh token available.');
+    }
+
+    final future = _refreshOnline(refreshToken);
+    _refreshFuture = future;
+    try {
+      await future;
+    } catch (e) {
+      await _handleRefreshFailure();
+      rethrow;
+    } finally {
+      _refreshFuture = null;
+    }
+  }
+
+  Future<void> _handleRefreshFailure() async {
+    await _storage.clearAccessToken();
+    await _storage.clearRefreshToken();
+    _dio.options.headers.remove('Authorization');
+    _setUnauthenticated();
+  }
+
+  void _setAuthenticated(AuthUser user, {required bool isOfflineSession}) {
     _currentUser = user;
+    _isOfflineSession = isOfflineSession;
     _state = AuthState.authenticated;
+    notifyListeners();
+  }
+
+  void _setUnauthenticated() {
+    _currentUser = null;
+    _isOfflineSession = false;
+    _state = AuthState.unauthenticated;
+    notifyListeners();
   }
 }

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../database/app_database.dart';
+import 'package:desktop_app/database/app_database.dart';
 
 class ApplicantFormScreen extends StatefulWidget {
   const ApplicantFormScreen({super.key});
@@ -84,7 +84,7 @@ class _ApplicantFormScreenState extends State<ApplicantFormScreen> {
                 )),
                 const SizedBox(width: 16),
                 Expanded(child: DropdownButtonFormField<String>(
-                  value: _gender,
+                  initialValue: _gender,
                   decoration: const InputDecoration(labelText: 'Gender', border: OutlineInputBorder()),
                   items: const [
                     DropdownMenuItem(value: 'male', child: Text('Male')),

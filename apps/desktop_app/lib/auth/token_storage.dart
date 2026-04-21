@@ -23,6 +23,7 @@ class TokenStorage {
   Future<void> saveRefreshToken(String token) =>
       _storage.write(key: _keyRefreshToken, value: token);
   Future<String?> getRefreshToken() => _storage.read(key: _keyRefreshToken);
+  Future<void> clearRefreshToken() => _storage.delete(key: _keyRefreshToken);
 
   // ─── Offline device token ──────────────────────────────────────────────────
   Future<void> saveOfflineToken(String token) =>

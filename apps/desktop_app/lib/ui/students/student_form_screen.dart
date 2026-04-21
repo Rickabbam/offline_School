@@ -10,7 +10,7 @@ class StudentFormScreen extends StatefulWidget {
   const StudentFormScreen({super.key, this.existing});
 
   /// Pass an existing record to edit; null = create new.
-  final StudentData? existing;
+  final Student? existing;
 
   @override
   State<StudentFormScreen> createState() => _StudentFormScreenState();

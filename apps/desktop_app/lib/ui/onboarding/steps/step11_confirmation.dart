@@ -1,10 +1,40 @@
 import 'package:flutter/material.dart';
 
-/// Step 11 — final confirmation before the wizard is dismissed.
-class Step11Confirmation extends StatelessWidget {
-  const Step11Confirmation({super.key, required this.onComplete});
+class Step11Confirmation extends StatefulWidget {
+  const Step11Confirmation({
+    super.key,
+    required this.onComplete,
+  });
 
-  final VoidCallback onComplete;
+  final Future<void> Function() onComplete;
+
+  @override
+  State<Step11Confirmation> createState() => _Step11ConfirmationState();
+}
+
+class _Step11ConfirmationState extends State<Step11Confirmation> {
+  bool _submitting = false;
+  String? _error;
+
+  Future<void> _submit() async {
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    try {
+      await widget.onComplete();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Setup submission failed. $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,7 +43,7 @@ class Step11Confirmation extends StatelessWidget {
       children: [
         Text('Setup Complete!', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 4),
-        const Text('Your school is now configured and ready to use.'),
+        const Text('Submit the collected setup data to activate the school workspace.'),
         const SizedBox(height: 24),
         Expanded(
           child: Center(
@@ -27,15 +57,18 @@ class Step11Confirmation extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'All 11 setup steps are complete.',
+                  'Ready to create the tenant, school, campus, and academic setup.',
                   style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'You can now manage students, staff, admissions, and attendance.',
-                  style: Theme.of(context).textTheme.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
+                if (_error != null) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    _error!,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ],
             ),
           ),
@@ -44,9 +77,15 @@ class Step11Confirmation extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             FilledButton.icon(
-              icon: const Icon(Icons.arrow_forward),
-              label: const Text('Go to Dashboard'),
-              onPressed: onComplete,
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.cloud_upload_outlined),
+              label: Text(_submitting ? 'Submitting...' : 'Finish Setup'),
+              onPressed: _submitting ? null : _submit,
             ),
           ],
         ),

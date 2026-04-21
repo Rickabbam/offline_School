@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../auth/auth_service.dart';
 
 /// Horizontal top bar displayed above the page content area.
 class TopBar extends StatelessWidget implements PreferredSizeWidget {
@@ -11,6 +14,9 @@ class TopBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthService>();
+    final user = auth.currentUser;
+
     return Container(
       height: preferredSize.height,
       decoration: BoxDecoration(
@@ -29,11 +35,30 @@ class TopBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
           ),
           const Spacer(),
-          _SyncStatusChip(),
+          _SyncStatusChip(isOfflineSession: auth.isOfflineSession),
           const SizedBox(width: 16),
-          const CircleAvatar(
-            radius: 16,
-            child: Icon(Icons.person, size: 18),
+          Text(
+            user?.fullName ?? 'Guest',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(width: 12),
+          PopupMenuButton<String>(
+            tooltip: 'User menu',
+            onSelected: (value) async {
+              if (value == 'logout') {
+                await context.read<AuthService>().logout();
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem<String>(
+                value: 'logout',
+                child: Text('Sign out'),
+              ),
+            ],
+            child: const CircleAvatar(
+              radius: 16,
+              child: Icon(Icons.person, size: 18),
+            ),
           ),
         ],
       ),
@@ -43,10 +68,13 @@ class TopBar extends StatelessWidget implements PreferredSizeWidget {
 
 /// Small indicator chip showing online/offline sync status.
 class _SyncStatusChip extends StatelessWidget {
+  const _SyncStatusChip({required this.isOfflineSession});
+
+  final bool isOfflineSession;
+
   @override
   Widget build(BuildContext context) {
-    // TODO Phase A wiring: replace with SyncService connectivity stream.
-    const isOnline = false;
+    final isOnline = !isOfflineSession;
     return Chip(
       avatar: Icon(
         isOnline ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
@@ -54,7 +82,7 @@ class _SyncStatusChip extends StatelessWidget {
         color: isOnline ? Colors.green : Colors.orange,
       ),
       label: Text(
-        isOnline ? 'Synced' : 'Offline',
+        isOnline ? 'Online Session' : 'Offline Session',
         style: const TextStyle(fontSize: 12),
       ),
       backgroundColor: isOnline

@@ -1,32 +1,19 @@
 import 'package:flutter/material.dart';
 
-class _NavItem {
-  const _NavItem({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-}
-
-const _items = [
-  _NavItem(icon: Icons.dashboard_outlined, label: 'Dashboard'),
-  _NavItem(icon: Icons.people_outline, label: 'Students'),
-  _NavItem(icon: Icons.badge_outlined, label: 'Staff'),
-  _NavItem(icon: Icons.fact_check_outlined, label: 'Attendance'),
-  _NavItem(icon: Icons.account_balance_wallet_outlined, label: 'Finance'),
-  _NavItem(icon: Icons.quiz_outlined, label: 'Exams'),
-  _NavItem(icon: Icons.bar_chart_outlined, label: 'Reports'),
-  _NavItem(icon: Icons.settings_outlined, label: 'Settings'),
-];
+import '../../auth/role_access.dart';
 
 /// Vertical navigation sidebar shown on the left of the app shell.
 class Sidebar extends StatelessWidget {
   const Sidebar({
     super.key,
-    required this.selectedIndex,
+    required this.items,
+    required this.selectedSection,
     required this.onSelected,
   });
 
-  final int selectedIndex;
-  final ValueChanged<int> onSelected;
+  final List<ShellNavItem> items;
+  final ShellSection selectedSection;
+  final ValueChanged<ShellSection> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +24,6 @@ class Sidebar extends StatelessWidget {
       color: colorScheme.primary,
       child: Column(
         children: [
-          // App logo / name
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 32),
             child: Column(
@@ -58,10 +44,10 @@ class Sidebar extends StatelessWidget {
           const Divider(color: Colors.white24),
           Expanded(
             child: ListView.builder(
-              itemCount: _items.length,
+              itemCount: items.length,
               itemBuilder: (context, index) {
-                final item = _items[index];
-                final selected = index == selectedIndex;
+                final item = items[index];
+                final selected = item.section == selectedSection;
                 return ListTile(
                   leading: Icon(
                     item.icon,
@@ -84,7 +70,7 @@ class Sidebar extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  onTap: () => onSelected(index),
+                  onTap: () => onSelected(item.section),
                 );
               },
             ),

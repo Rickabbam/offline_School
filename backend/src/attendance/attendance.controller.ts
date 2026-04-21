@@ -15,6 +15,7 @@ export class AttendanceController {
   constructor(private readonly svc: AttendanceService) {}
 
   @Get()
+  @Roles(UserRole.Teacher, UserRole.Admin)
   findByDate(
     @Request() req: { user: User },
     @Query('classArmId') classArmId: string,
@@ -29,20 +30,33 @@ export class AttendanceController {
   }
 
   @Get('student/:studentId')
+  @Roles(UserRole.Teacher, UserRole.Admin)
   findByStudent(
+    @Request() req: { user: User },
     @Param('studentId') studentId: string,
     @Query('termId') termId?: string,
   ) {
-    return this.svc.findByStudent(studentId, termId);
+    return this.svc.findByStudent(
+      req.user.tenantId!,
+      req.user.schoolId!,
+      studentId,
+      termId,
+    );
   }
 
   @Get('summary')
+  @Roles(UserRole.Teacher, UserRole.Admin)
   summary(
     @Request() req: { user: User },
     @Query('classArmId') classArmId: string,
     @Query('termId') termId: string,
   ) {
-    return this.svc.summary(req.user.schoolId!, classArmId, termId);
+    return this.svc.summary(
+      req.user.tenantId!,
+      req.user.schoolId!,
+      classArmId,
+      termId,
+    );
   }
 
   /** Mark attendance for a single student */

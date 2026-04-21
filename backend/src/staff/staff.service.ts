@@ -19,23 +19,23 @@ export class StaffService {
     return this.repo.find({ where: { tenantId, schoolId, deleted: false } });
   }
 
-  findById(id: string) {
-    return this.repo.findOne({ where: { id, deleted: false } });
+  findById(tenantId: string, schoolId: string, id: string) {
+    return this.repo.findOne({ where: { id, tenantId, schoolId, deleted: false } });
   }
 
   create(tenantId: string, schoolId: string, data: Partial<Staff>) {
     return this.repo.save(this.repo.create({ ...data, tenantId, schoolId, syncStatus: 'local' }));
   }
 
-  async update(id: string, data: Partial<Staff>) {
-    const staff = await this.repo.findOne({ where: { id } });
+  async update(tenantId: string, schoolId: string, id: string, data: Partial<Staff>) {
+    const staff = await this.repo.findOne({ where: { id, tenantId, schoolId, deleted: false } });
     if (!staff) throw new NotFoundException('Staff member not found.');
     await this.repo.update(id, { ...data, syncStatus: 'local' });
-    return this.findById(id);
+    return this.findById(tenantId, schoolId, id);
   }
 
-  async remove(id: string) {
-    const staff = await this.repo.findOne({ where: { id } });
+  async remove(tenantId: string, schoolId: string, id: string) {
+    const staff = await this.repo.findOne({ where: { id, tenantId, schoolId, deleted: false } });
     if (!staff) throw new NotFoundException('Staff member not found.');
     await this.repo.update(id, { deleted: true });
   }

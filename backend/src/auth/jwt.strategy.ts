@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +13,7 @@ export interface JwtPayload {
   tenantId: string | null;
   schoolId: string | null;
   campusId: string | null;
+  tokenType: 'access' | 'refresh';
 }
 
 @Injectable()
@@ -29,10 +30,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<User> {
+    if (payload.tokenType !== 'access') {
+      throw new UnauthorizedException('Invalid access token.');
+    }
+
     const user = await this.users.findOne({
       where: { id: payload.sub, deleted: false, isActive: true },
     });
-    if (!user) throw new Error('User not found or inactive');
+    if (!user) {
+      throw new UnauthorizedException('User not found or inactive.');
+    }
     return user;
   }
 }

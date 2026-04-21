@@ -18,8 +18,8 @@ export class AdmissionsService {
     return this.applicants.find({ where });
   }
 
-  findById(id: string) {
-    return this.applicants.findOne({ where: { id, deleted: false } });
+  findById(tenantId: string, schoolId: string, id: string) {
+    return this.applicants.findOne({ where: { id, tenantId, schoolId, deleted: false } });
   }
 
   create(tenantId: string, schoolId: string, data: Partial<Applicant>) {
@@ -28,18 +28,18 @@ export class AdmissionsService {
     );
   }
 
-  async update(id: string, data: Partial<Applicant>) {
-    const app = await this.applicants.findOne({ where: { id } });
+  async update(tenantId: string, schoolId: string, id: string, data: Partial<Applicant>) {
+    const app = await this.applicants.findOne({ where: { id, tenantId, schoolId, deleted: false } });
     if (!app) throw new NotFoundException('Applicant not found.');
     await this.applicants.update(id, data);
-    return this.findById(id);
+    return this.findById(tenantId, schoolId, id);
   }
 
   /**
    * Admit: move applicant status to 'admitted'.
    */
-  async admit(id: string) {
-    const app = await this.applicants.findOne({ where: { id, deleted: false } });
+  async admit(tenantId: string, schoolId: string, id: string) {
+    const app = await this.applicants.findOne({ where: { id, tenantId, schoolId, deleted: false } });
     if (!app) throw new NotFoundException('Applicant not found.');
     if (app.status !== ApplicantStatus.Applied && app.status !== ApplicantStatus.Screened) {
       throw new BadRequestException(`Cannot admit applicant in status '${app.status}'.`);
@@ -48,14 +48,14 @@ export class AdmissionsService {
       status: ApplicantStatus.Admitted,
       admittedAt: new Date(),
     });
-    return this.findById(id);
+    return this.findById(tenantId, schoolId, id);
   }
 
   /**
    * Enroll: convert admitted applicant to a full Student record (atomic).
    */
-  async enroll(id: string) {
-    const app = await this.applicants.findOne({ where: { id, deleted: false } });
+  async enroll(tenantId: string, schoolId: string, id: string) {
+    const app = await this.applicants.findOne({ where: { id, tenantId, schoolId, deleted: false } });
     if (!app) throw new NotFoundException('Applicant not found.');
     if (app.status !== ApplicantStatus.Admitted) {
       throw new BadRequestException('Applicant must be admitted before enrollment.');
@@ -84,10 +84,10 @@ export class AdmissionsService {
     });
   }
 
-  async reject(id: string) {
-    const app = await this.applicants.findOne({ where: { id } });
+  async reject(tenantId: string, schoolId: string, id: string) {
+    const app = await this.applicants.findOne({ where: { id, tenantId, schoolId, deleted: false } });
     if (!app) throw new NotFoundException('Applicant not found.');
     await this.applicants.update(id, { status: ApplicantStatus.Rejected });
-    return this.findById(id);
+    return this.findById(tenantId, schoolId, id);
   }
 }

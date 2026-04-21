@@ -16,6 +16,7 @@ cp .env.example .env
 
 npm install
 npm run migration:run
+npm run seed:roles
 npm run start:dev
 ```
 
@@ -41,6 +42,7 @@ Returns `200 OK` with status of database, redis, and memory heap.
 | `npm run migration:generate` | Generate a new migration from entity changes |
 | `npm run migration:run` | Run all pending migrations |
 | `npm run migration:revert` | Revert last migration |
+| `npm run seed:roles` | Bootstrap the default admin user and list supported roles |
 
 ## Module structure
 
@@ -70,3 +72,12 @@ Copy `.env.example` to `.env` and fill in the values.
 | `DATABASE_PASSWORD` | Database password | `postgres` |
 | `REDIS_HOST` | Redis host | `localhost` |
 | `REDIS_PORT` | Redis port | `6379` |
+| `JWT_SECRET` | Signing secret for access and refresh tokens | none |
+
+`seed:roles` uses these optional variables when creating the bootstrap admin:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DEFAULT_ADMIN_EMAIL` | Admin login email | `admin@offline-school.local` |
+| `DEFAULT_ADMIN_PASSWORD` | Admin password | `ChangeMe123!` |
+| `DEFAULT_ADMIN_FULL_NAME` | Admin display name | `Offline School Admin` |

@@ -1,27 +1,34 @@
+import 'package:desktop_app/auth/auth_service.dart';
+import 'package:desktop_app/database/app_database.dart';
+import 'package:desktop_app/ui/attendance/attendance_workspace_service.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../database/app_database.dart';
-
-/// Daily class attendance screen for teachers.
-/// Teachers select a class, date, then mark each student as
-/// present / absent / late / excused.
 class AttendanceScreen extends StatefulWidget {
-  const AttendanceScreen({super.key});
+  const AttendanceScreen({super.key, required this.service});
+
+  final AttendanceWorkspaceService service;
 
   @override
   State<AttendanceScreen> createState() => _AttendanceScreenState();
 }
 
 class _AttendanceScreenState extends State<AttendanceScreen> {
-  // In a full implementation these would be pulled from the local DB.
-  // Using placeholder values until academic setup is wired in Flutter.
+  static const _statusOptions = ['present', 'absent', 'late', 'excused'];
+
+  AttendanceWorkspaceData? _workspace;
   String? _selectedClassArmId;
   DateTime _selectedDate = DateTime.now();
+  bool _loadingWorkspace = true;
+  String? _workspaceError;
 
-  static const _statusOptions = ['present', 'absent', 'late', 'excused'];
+  @override
+  void initState() {
+    super.initState();
+    _loadWorkspace();
+  }
 
   String _dateLabel(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -33,156 +40,306 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
     );
-    if (picked != null) setState(() => _selectedDate = picked);
+    if (picked != null) {
+      setState(() => _selectedDate = picked);
+    }
+  }
+
+  Future<void> _loadWorkspace() async {
+    setState(() {
+      _loadingWorkspace = true;
+      _workspaceError = null;
+    });
+
+    try {
+      final workspace = await widget.service.loadWorkspace();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _workspace = workspace;
+        _selectedClassArmId = workspace.classArms.isEmpty
+            ? null
+            : _selectedClassArmId ?? '${workspace.classArms.first['id']}';
+        _loadingWorkspace = false;
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _workspaceError = 'Failed to load attendance workspace: $e';
+        _loadingWorkspace = false;
+      });
+    }
   }
 
   Future<void> _markAttendance(
-      AppDatabase db, StudentData student, String status) async {
-    if (_selectedClassArmId == null) return;
+    AppDatabase db,
+    Student student,
+    String status,
+  ) async {
+    if (_selectedClassArmId == null) {
+      return;
+    }
+
+    final workspace = _workspace;
+    final user = context.read<AuthService>().currentUser;
+    if (workspace == null ||
+        workspace.currentAcademicYearId == null ||
+        workspace.currentTermId == null ||
+        user == null ||
+        user.tenantId == null ||
+        user.schoolId == null) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _workspaceError =
+            'Attendance requires an active academic year, term, and school scope.';
+      });
+      return;
+    }
+
     final dateStr = _dateLabel(_selectedDate);
-    await db.upsertAttendanceRecord(AttendanceRecordsCompanion(
-      id: Value(const Uuid().v4()),
-      tenantId: const Value('local'),
-      schoolId: const Value('local'),
-      studentId: Value(student.id),
-      classArmId: Value(_selectedClassArmId!),
-      academicYearId: const Value('local'),
-      termId: const Value('local'),
-      attendanceDate: Value(dateStr),
-      status: Value(status),
-      syncStatus: const Value('local'),
-    ));
+    await db.upsertAttendanceRecord(
+      AttendanceRecordsCompanion(
+        id: Value(const Uuid().v4()),
+        tenantId: Value(user.tenantId!),
+        schoolId: Value(user.schoolId!),
+        campusId: Value(user.campusId),
+        studentId: Value(student.id),
+        classArmId: Value(_selectedClassArmId!),
+        academicYearId: Value(workspace.currentAcademicYearId!),
+        termId: Value(workspace.currentTermId!),
+        attendanceDate: Value(dateStr),
+        status: Value(status),
+        syncStatus: const Value('local'),
+      ),
+    );
     if (mounted) {
-      setState(() {}); // Refresh
+      setState(() {});
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final db = context.read<AppDatabase>();
+    final workspace = _workspace;
+
+    if (_loadingWorkspace) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_workspaceError != null && workspace == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_workspaceError!, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton(
+                  onPressed: _loadWorkspace, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Toolbar ────────────────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.all(20),
-          child: Row(
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text('Attendance',
                   style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(width: 24),
               OutlinedButton.icon(
                 icon: const Icon(Icons.calendar_today, size: 16),
                 label: Text(_dateLabel(_selectedDate)),
                 onPressed: _pickDate,
               ),
-              const SizedBox(width: 12),
-              // Placeholder class selector — wired to real data in Step 9 setup
               SizedBox(
-                width: 220,
+                width: 260,
                 child: DropdownButtonFormField<String>(
-                  value: _selectedClassArmId,
+                  initialValue: _selectedClassArmId,
                   decoration: const InputDecoration(
                     labelText: 'Select Class',
                     isDense: true,
                     border: OutlineInputBorder(),
                   ),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'demo-class-arm',
-                        child: Text('Basic 1A (demo)')),
-                  ],
-                  onChanged: (v) => setState(() => _selectedClassArmId = v),
+                  items: workspace?.classArms
+                          .map(
+                            (item) => DropdownMenuItem<String>(
+                              value: '${item['id']}',
+                              child: Text(
+                                AttendanceWorkspaceService.labelForClassArm(
+                                    item),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList() ??
+                      const [],
+                  onChanged: (value) =>
+                      setState(() => _selectedClassArmId = value),
                 ),
+              ),
+              if (workspace?.currentAcademicYearLabel != null ||
+                  workspace?.currentTermLabel != null)
+                Chip(
+                  avatar: const Icon(Icons.event_note_outlined, size: 18),
+                  label: Text(
+                    [
+                      if (workspace?.currentAcademicYearLabel != null)
+                        workspace!.currentAcademicYearLabel!,
+                      if (workspace?.currentTermLabel != null)
+                        workspace?.currentTermLabel ?? '',
+                    ].join(' • '),
+                  ),
+                ),
+              IconButton(
+                tooltip: 'Reload attendance workspace',
+                onPressed: _loadWorkspace,
+                icon: const Icon(Icons.refresh),
               ),
             ],
           ),
         ),
+        if (_workspaceError != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _workspaceError!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                ),
+              ),
+            ),
+          ),
         const Divider(height: 1),
-
-        // ── Student list with attendance controls ──────────────────────────────
         Expanded(
-          child: _selectedClassArmId == null
+          child: (workspace == null || workspace.classArms.isEmpty)
               ? Center(
-                  child: Text('Select a class to mark attendance.',
-                      style: Theme.of(context).textTheme.bodyLarge),
+                  child: Text(
+                    'No class arms are configured for this school yet.',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
                 )
-              : FutureBuilder<List<StudentData>>(
-                  future: db.getStudents(),
-                  builder: (ctx, snap) {
-                    if (snap.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final students = snap.data ?? [];
-                    if (students.isEmpty) {
-                      return const Center(
-                          child: Text('No students enrolled in this class.'));
-                    }
+              : _selectedClassArmId == null
+                  ? Center(
+                      child: Text(
+                        'Select a class to mark attendance.',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                    )
+                  : FutureBuilder<List<Student>>(
+                      future: db.getStudentsForClassArm(_selectedClassArmId!),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator());
+                        }
+                        final students = snapshot.data ?? [];
+                        if (students.isEmpty) {
+                          return const Center(
+                            child: Text('No students enrolled in this class.'),
+                          );
+                        }
 
-                    return FutureBuilder<List<AttendanceRecordData>>(
-                      future: db.getAttendanceForClass(
-                          classArmId: _selectedClassArmId!,
-                          date: _dateLabel(_selectedDate)),
-                      builder: (ctx2, aSn) {
-                        final records = aSn.data ?? [];
-                        final Map<String, String> statusMap = {
-                          for (final r in records) r.studentId: r.status,
-                        };
-
-                        return SingleChildScrollView(
-                          child: DataTable(
-                            columns: const [
-                              DataColumn(label: Text('Student')),
-                              DataColumn(label: Text('Mark Attendance')),
-                              DataColumn(label: Text('Current Status')),
-                            ],
-                            rows: students.map((s) {
-                              final current = statusMap[s.id] ?? '';
-                              return DataRow(cells: [
-                                DataCell(Text('${s.firstName} ${s.lastName}')),
-                                DataCell(
-                                  Row(
-                                    children: _statusOptions.map((st) {
-                                      final icons = {
-                                        'present': Icons.check_circle_outline,
-                                        'absent': Icons.cancel_outlined,
-                                        'late': Icons.access_time,
-                                        'excused': Icons.info_outline,
-                                      };
-                                      final colors = {
-                                        'present': Colors.green,
-                                        'absent': Colors.red,
-                                        'late': Colors.orange,
-                                        'excused': Colors.blue,
-                                      };
-                                      return Padding(
-                                        padding: const EdgeInsets.only(right: 6),
-                                        child: Tooltip(
-                                          message: st,
-                                          child: IconButton(
-                                            icon: Icon(icons[st],
-                                                color: current == st
-                                                    ? colors[st]
-                                                    : Colors.grey.shade400),
-                                            iconSize: 22,
-                                            onPressed: () =>
-                                                _markAttendance(db, s, st),
-                                          ),
-                                        ),
-                                      );
-                                    }).toList(),
-                                  ),
-                                ),
-                                DataCell(Text(current.isEmpty ? '—' : current)),
-                              ]);
-                            }).toList(),
+                        return FutureBuilder<List<AttendanceRecord>>(
+                          future: db.getAttendanceForClass(
+                            classArmId: _selectedClassArmId!,
+                            date: _dateLabel(_selectedDate),
                           ),
+                          builder: (context, attendanceSnapshot) {
+                            final records = attendanceSnapshot.data ?? [];
+                            final statusMap = <String, String>{
+                              for (final record in records)
+                                record.studentId: record.status,
+                            };
+
+                            return SingleChildScrollView(
+                              padding: const EdgeInsets.all(20),
+                              child: DataTable(
+                                columns: const [
+                                  DataColumn(label: Text('Student')),
+                                  DataColumn(label: Text('Mark Attendance')),
+                                  DataColumn(label: Text('Current Status')),
+                                ],
+                                rows: students.map((student) {
+                                  final current = statusMap[student.id] ?? '';
+                                  return DataRow(
+                                    cells: [
+                                      DataCell(Text(
+                                          '${student.firstName} ${student.lastName}')),
+                                      DataCell(
+                                        Row(
+                                          children:
+                                              _statusOptions.map((status) {
+                                            final icons = {
+                                              'present':
+                                                  Icons.check_circle_outline,
+                                              'absent': Icons.cancel_outlined,
+                                              'late': Icons.access_time,
+                                              'excused': Icons.info_outline,
+                                            };
+                                            final colors = {
+                                              'present': Colors.green,
+                                              'absent': Colors.red,
+                                              'late': Colors.orange,
+                                              'excused': Colors.blue,
+                                            };
+                                            return Padding(
+                                              padding: const EdgeInsets.only(
+                                                  right: 6),
+                                              child: Tooltip(
+                                                message: status,
+                                                child: IconButton(
+                                                  icon: Icon(
+                                                    icons[status],
+                                                    color: current == status
+                                                        ? colors[status]
+                                                        : Colors.grey.shade400,
+                                                  ),
+                                                  iconSize: 22,
+                                                  onPressed: () =>
+                                                      _markAttendance(
+                                                    db,
+                                                    student,
+                                                    status,
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ),
+                                      DataCell(Text(
+                                          current.isEmpty ? '-' : current)),
+                                    ],
+                                  );
+                                }).toList(),
+                              ),
+                            );
+                          },
                         );
                       },
-                    );
-                  },
-                ),
+                    ),
         ),
       ],
     );

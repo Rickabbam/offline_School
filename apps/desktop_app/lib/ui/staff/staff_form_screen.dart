@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../database/app_database.dart';
+import 'package:desktop_app/database/app_database.dart';
 
 class StaffFormScreen extends StatefulWidget {
   const StaffFormScreen({super.key, this.existing});
@@ -111,7 +111,7 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
               const SizedBox(height: 16),
               Row(children: [
                 Expanded(child: DropdownButtonFormField<String>(
-                  value: _role,
+                  initialValue: _role,
                   decoration: const InputDecoration(labelText: 'System Role *', border: OutlineInputBorder()),
                   items: const [
                     DropdownMenuItem(value: 'admin', child: Text('Admin')),
@@ -122,7 +122,7 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
                 )),
                 const SizedBox(width: 16),
                 Expanded(child: DropdownButtonFormField<String>(
-                  value: _employmentType,
+                  initialValue: _employmentType,
                   decoration: const InputDecoration(labelText: 'Employment Type', border: OutlineInputBorder()),
                   items: const [
                     DropdownMenuItem(value: 'permanent', child: Text('Permanent')),

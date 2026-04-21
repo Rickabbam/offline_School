@@ -25,8 +25,8 @@ export class StudentsService {
     return this.students.find({ where: { tenantId, schoolId, deleted: false } });
   }
 
-  findById(id: string) {
-    return this.students.findOne({ where: { id, deleted: false } });
+  findById(tenantId: string, schoolId: string, id: string) {
+    return this.students.findOne({ where: { id, tenantId, schoolId, deleted: false } });
   }
 
   create(tenantId: string, schoolId: string, dto: CreateStudentDto) {
@@ -34,22 +34,22 @@ export class StudentsService {
     return this.students.save(student);
   }
 
-  async update(id: string, data: Partial<Student>) {
-    const student = await this.students.findOne({ where: { id } });
+  async update(tenantId: string, schoolId: string, id: string, data: Partial<Student>) {
+    const student = await this.students.findOne({ where: { id, tenantId, schoolId, deleted: false } });
     if (!student) throw new NotFoundException('Student not found.');
     await this.students.update(id, { ...data, syncStatus: 'local' });
-    return this.findById(id);
+    return this.findById(tenantId, schoolId, id);
   }
 
-  async remove(id: string) {
-    const student = await this.students.findOne({ where: { id } });
+  async remove(tenantId: string, schoolId: string, id: string) {
+    const student = await this.students.findOne({ where: { id, tenantId, schoolId, deleted: false } });
     if (!student) throw new NotFoundException('Student not found.');
     await this.students.update(id, { deleted: true });
   }
 
   // ─── Guardians ──────────────────────────────────────────────────────────────
-  getGuardians(studentId: string) {
-    return this.guardians.find({ where: { studentId, deleted: false } });
+  getGuardians(tenantId: string, schoolId: string, studentId: string) {
+    return this.guardians.find({ where: { tenantId, schoolId, studentId, deleted: false } });
   }
 
   addGuardian(tenantId: string, schoolId: string, data: Partial<Guardian>) {
@@ -57,8 +57,8 @@ export class StudentsService {
   }
 
   // ─── Enrollments ────────────────────────────────────────────────────────────
-  getEnrollments(studentId: string) {
-    return this.enrollments.find({ where: { studentId, deleted: false } });
+  getEnrollments(tenantId: string, schoolId: string, studentId: string) {
+    return this.enrollments.find({ where: { tenantId, schoolId, studentId, deleted: false } });
   }
 
   enroll(tenantId: string, schoolId: string, data: Partial<Enrollment>) {

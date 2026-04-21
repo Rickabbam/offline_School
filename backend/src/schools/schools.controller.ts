@@ -21,7 +21,10 @@ export class SchoolsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) { return this.svc.findById(id); }
+  @Roles(UserRole.Admin, UserRole.SupportAdmin)
+  findOne(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.findById(req.user.tenantId!, id);
+  }
 
   @Post()
   @Roles(UserRole.SupportAdmin)
@@ -29,11 +32,13 @@ export class SchoolsController {
 
   @Patch(':id')
   @Roles(UserRole.Admin, UserRole.SupportAdmin)
-  update(@Param('id') id: string, @Body() body: Partial<School>) {
-    return this.svc.update(id, body);
+  update(@Request() req: { user: User }, @Param('id') id: string, @Body() body: Partial<School>) {
+    return this.svc.update(req.user.tenantId!, id, body);
   }
 
   @Delete(':id')
   @Roles(UserRole.SupportAdmin)
-  remove(@Param('id') id: string) { return this.svc.remove(id); }
+  remove(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.remove(req.user.tenantId!, id);
+  }
 }

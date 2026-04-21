@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../auth/auth_service.dart';
+import 'onboarding_models.dart';
+import 'onboarding_service.dart';
 import 'steps/step1_school_profile.dart';
 import 'steps/step2_campus_setup.dart';
 import 'steps/step3_academic_year.dart';
@@ -27,6 +31,7 @@ class OnboardingWizard extends StatefulWidget {
 
 class _OnboardingWizardState extends State<OnboardingWizard> {
   int _currentStep = 0;
+  OnboardingDraft _draft = const OnboardingDraft();
 
   static const _stepTitles = [
     '1. School Profile',
@@ -57,15 +62,49 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
   Widget _buildStep() {
     switch (_currentStep) {
       case 0:
-        return Step1SchoolProfile(onNext: _next);
+        return Step1SchoolProfile(
+          initialValue: _draft.school,
+          onNext: (value) {
+            setState(() => _draft = _draft.copyWith(school: value));
+            _next();
+          },
+        );
       case 1:
-        return Step2CampusSetup(onNext: _next, onBack: _back);
+        return Step2CampusSetup(
+          initialValue: _draft.campus,
+          onNext: (value) {
+            setState(() => _draft = _draft.copyWith(campus: value));
+            _next();
+          },
+          onBack: _back,
+        );
       case 2:
-        return Step3AcademicYear(onNext: _next, onBack: _back);
+        return Step3AcademicYear(
+          initialValue: _draft.academicYear,
+          onNext: (value) {
+            setState(() => _draft = _draft.copyWith(academicYear: value));
+            _next();
+          },
+          onBack: _back,
+        );
       case 3:
-        return Step4ClassesSubjects(onNext: _next, onBack: _back);
+        return Step4ClassesSubjects(
+          initialValue: _draft.classSetup,
+          onNext: (value) {
+            setState(() => _draft = _draft.copyWith(classSetup: value));
+            _next();
+          },
+          onBack: _back,
+        );
       case 4:
-        return Step5GradingScheme(onNext: _next, onBack: _back);
+        return Step5GradingScheme(
+          initialValue: _draft.gradingScheme,
+          onNext: (value) {
+            setState(() => _draft = _draft.copyWith(gradingScheme: value));
+            _next();
+          },
+          onBack: _back,
+        );
       case 5:
         return Step6StaffRoles(onNext: _next, onBack: _back);
       case 6:
@@ -77,10 +116,18 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
       case 9:
         return Step10DeviceRegistration(onNext: _next, onBack: _back);
       case 10:
-        return Step11Confirmation(onComplete: widget.onCompleted);
+        return Step11Confirmation(onComplete: _submitSetup);
       default:
         return const SizedBox.shrink();
     }
+  }
+
+  Future<void> _submitSetup() async {
+    final auth = context.read<AuthService>();
+    final service = OnboardingService(auth);
+    await service.bootstrapSchool(_draft);
+    if (!mounted) return;
+    widget.onCompleted();
   }
 
   @override

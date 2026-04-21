@@ -16,12 +16,16 @@ export class StudentsController {
   constructor(private readonly svc: StudentsService) {}
 
   @Get()
+  @Roles(UserRole.Admin, UserRole.Teacher)
   findAll(@Request() req: { user: User }, @Query('search') search?: string) {
     return this.svc.findAll(req.user.tenantId!, req.user.schoolId!, search);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) { return this.svc.findById(id); }
+  @Roles(UserRole.Admin, UserRole.Teacher)
+  findOne(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.findById(req.user.tenantId!, req.user.schoolId!, id);
+  }
 
   @Post()
   @Roles(UserRole.Admin, UserRole.Teacher)
@@ -31,17 +35,22 @@ export class StudentsController {
 
   @Patch(':id')
   @Roles(UserRole.Admin, UserRole.Teacher)
-  update(@Param('id') id: string, @Body() body: Partial<CreateStudentDto>) {
-    return this.svc.update(id, body);
+  update(@Request() req: { user: User }, @Param('id') id: string, @Body() body: Partial<CreateStudentDto>) {
+    return this.svc.update(req.user.tenantId!, req.user.schoolId!, id, body);
   }
 
   @Delete(':id')
   @Roles(UserRole.Admin)
-  remove(@Param('id') id: string) { return this.svc.remove(id); }
+  remove(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.remove(req.user.tenantId!, req.user.schoolId!, id);
+  }
 
   // ─── Guardians ──────────────────────────────────────────────────────────────
   @Get(':id/guardians')
-  getGuardians(@Param('id') id: string) { return this.svc.getGuardians(id); }
+  @Roles(UserRole.Admin, UserRole.Teacher)
+  getGuardians(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.getGuardians(req.user.tenantId!, req.user.schoolId!, id);
+  }
 
   @Post(':id/guardians')
   @Roles(UserRole.Admin, UserRole.Teacher)
@@ -58,7 +67,10 @@ export class StudentsController {
 
   // ─── Enrollments ────────────────────────────────────────────────────────────
   @Get(':id/enrollments')
-  getEnrollments(@Param('id') id: string) { return this.svc.getEnrollments(id); }
+  @Roles(UserRole.Admin, UserRole.Teacher)
+  getEnrollments(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.getEnrollments(req.user.tenantId!, req.user.schoolId!, id);
+  }
 
   @Post(':id/enrollments')
   @Roles(UserRole.Admin)

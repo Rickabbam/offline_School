@@ -15,6 +15,7 @@ export class AdmissionsController {
   constructor(private readonly svc: AdmissionsService) {}
 
   @Get()
+  @Roles(UserRole.Admin, UserRole.Teacher)
   findAll(
     @Request() req: { user: User },
     @Query('status') status?: ApplicantStatus,
@@ -23,7 +24,10 @@ export class AdmissionsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) { return this.svc.findById(id); }
+  @Roles(UserRole.Admin, UserRole.Teacher)
+  findOne(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.findById(req.user.tenantId!, req.user.schoolId!, id);
+  }
 
   @Post()
   @Roles(UserRole.Admin, UserRole.Teacher)
@@ -33,19 +37,25 @@ export class AdmissionsController {
 
   @Patch(':id')
   @Roles(UserRole.Admin, UserRole.Teacher)
-  update(@Param('id') id: string, @Body() body: Partial<Applicant>) {
-    return this.svc.update(id, body);
+  update(@Request() req: { user: User }, @Param('id') id: string, @Body() body: Partial<Applicant>) {
+    return this.svc.update(req.user.tenantId!, req.user.schoolId!, id, body);
   }
 
   @Post(':id/admit')
   @Roles(UserRole.Admin)
-  admit(@Param('id') id: string) { return this.svc.admit(id); }
+  admit(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.admit(req.user.tenantId!, req.user.schoolId!, id);
+  }
 
   @Post(':id/enroll')
   @Roles(UserRole.Admin)
-  enroll(@Param('id') id: string) { return this.svc.enroll(id); }
+  enroll(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.enroll(req.user.tenantId!, req.user.schoolId!, id);
+  }
 
   @Post(':id/reject')
   @Roles(UserRole.Admin)
-  reject(@Param('id') id: string) { return this.svc.reject(id); }
+  reject(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.svc.reject(req.user.tenantId!, req.user.schoolId!, id);
+  }
 }

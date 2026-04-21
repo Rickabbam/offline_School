@@ -4,8 +4,8 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:logger/logger.dart';
 
-import '../database/app_database.dart';
-import 'connectivity_monitor.dart';
+import 'package:desktop_app/database/app_database.dart';
+import 'package:desktop_app/sync/connectivity_monitor.dart';
 
 /// How many push failures before a queue item is permanently abandoned.
 const int _maxRetries = 5;
@@ -169,7 +169,7 @@ class SyncService {
 
       if (records.isNotEmpty) {
         _logger.d(
-          'Pulled ${records.length} ${entityType} delta(s) '
+          'Pulled ${records.length} $entityType delta(s) '
           '(revision $since → $newRevision).',
         );
         // TODO Phase B: dispatch records to entity-specific DAOs for upsert.

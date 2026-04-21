@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../database/app_database.dart';
+import 'student_form_screen.dart';
 
 /// Student list screen with local search and quick add action.
 class StudentListScreen extends StatefulWidget {
@@ -76,7 +77,7 @@ class _StudentListScreenState extends State<StudentListScreen> {
 
         // ── Table ──────────────────────────────────────────────────────────────
         Expanded(
-          child: FutureBuilder<List<StudentData>>(
+          child: FutureBuilder<List<Student>>(
             future: db.getStudents(search: _search.isEmpty ? null : _search),
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {

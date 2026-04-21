@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../auth/auth_service.dart';
+import 'package:desktop_app/auth/auth_service.dart';
 
 /// Login screen shown when no authenticated session exists.
 /// Supports online email+password login.

@@ -5,12 +5,12 @@ import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'tables/sync_queue.dart';
-import 'tables/sync_state.dart';
-import 'tables/students.dart';
-import 'tables/staff.dart';
-import 'tables/applicants.dart';
-import 'tables/attendance_records.dart';
+import 'package:desktop_app/database/tables/applicants.dart';
+import 'package:desktop_app/database/tables/attendance_records.dart';
+import 'package:desktop_app/database/tables/staff.dart';
+import 'package:desktop_app/database/tables/students.dart';
+import 'package:desktop_app/database/tables/sync_queue.dart';
+import 'package:desktop_app/database/tables/sync_state.dart';
 
 part 'app_database.g.dart';
 
@@ -63,19 +63,18 @@ class AppDatabase extends _$AppDatabase {
 
   // ─── SyncQueue queries ─────────────────────────────────────────────────────
 
-  Future<List<SyncQueueData>> getPendingQueueItems() =>
-      (select(syncQueue)
-            ..where((t) => t.status.equals('pending'))
-            ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
-          .get();
+  Future<List<SyncQueueData>> getPendingQueueItems() => (select(syncQueue)
+        ..where((t) => t.status.equals('pending'))
+        ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+      .get();
 
-  Future<void> markQueueItemDone(String id) => (update(syncQueue)
-        ..where((t) => t.id.equals(id)))
-      .write(const SyncQueueCompanion(status: Value('done')));
+  Future<void> markQueueItemDone(String id) =>
+      (update(syncQueue)..where((t) => t.id.equals(id)))
+          .write(const SyncQueueCompanion(status: Value('done')));
 
   Future<void> incrementQueueRetry(String id) async {
-    final item =
-        await (select(syncQueue)..where((t) => t.id.equals(id))).getSingleOrNull();
+    final item = await (select(syncQueue)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
     if (item == null) return;
     await (update(syncQueue)..where((t) => t.id.equals(id))).write(
       SyncQueueCompanion(
@@ -85,9 +84,9 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  Future<void> markQueueItemFailed(String id) => (update(syncQueue)
-        ..where((t) => t.id.equals(id)))
-      .write(const SyncQueueCompanion(status: Value('failed')));
+  Future<void> markQueueItemFailed(String id) =>
+      (update(syncQueue)..where((t) => t.id.equals(id)))
+          .write(const SyncQueueCompanion(status: Value('failed')));
 
   // ─── SyncState queries ─────────────────────────────────────────────────────
 
@@ -110,7 +109,7 @@ class AppDatabase extends _$AppDatabase {
 
   // ─── Student queries ──────────────────────────────────────────────────────
 
-  Future<List<StudentData>> getStudents({String? search}) {
+  Future<List<Student>> getStudents({String? search}) {
     final q = select(students)..where((t) => t.deleted.equals(false));
     if (search != null && search.isNotEmpty) {
       q.where((t) =>
@@ -121,6 +120,25 @@ class AppDatabase extends _$AppDatabase {
     return q.get();
   }
 
+  Future<List<Student>> getStudentsForClassArm(String classArmId) async {
+    final query = select(students).join([
+      innerJoin(
+        enrollments,
+        enrollments.studentId.equalsExp(students.id) &
+            enrollments.classArmId.equals(classArmId) &
+            enrollments.deleted.equals(false),
+      ),
+    ])
+      ..where(students.deleted.equals(false));
+
+    final rows = await query.get();
+    final seenIds = <String>{};
+    return rows
+        .map((row) => row.readTable(students))
+        .where((student) => seenIds.add(student.id))
+        .toList(growable: false);
+  }
+
   Future<void> upsertStudent(StudentsCompanion student) =>
       into(students).insertOnConflictUpdate(student);
 
@@ -129,8 +147,8 @@ class AppDatabase extends _$AppDatabase {
   Future<List<StaffData>> getAllStaff({String? search}) {
     final q = select(staff)..where((t) => t.deleted.equals(false));
     if (search != null && search.isNotEmpty) {
-      q.where((t) =>
-          t.firstName.like('%$search%') | t.lastName.like('%$search%'));
+      q.where(
+          (t) => t.firstName.like('%$search%') | t.lastName.like('%$search%'));
     }
     return q.get();
   }
@@ -140,7 +158,7 @@ class AppDatabase extends _$AppDatabase {
 
   // ─── Applicant queries ────────────────────────────────────────────────────
 
-  Future<List<ApplicantData>> getApplicants({String? status}) {
+  Future<List<Applicant>> getApplicants({String? status}) {
     final q = select(applicants)..where((t) => t.deleted.equals(false));
     if (status != null) {
       q.where((t) => t.status.equals(status));
@@ -153,7 +171,7 @@ class AppDatabase extends _$AppDatabase {
 
   // ─── Attendance queries ───────────────────────────────────────────────────
 
-  Future<List<AttendanceRecordData>> getAttendanceForClass({
+  Future<List<AttendanceRecord>> getAttendanceForClass({
     required String classArmId,
     required String date,
   }) {
