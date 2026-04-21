@@ -47,6 +47,9 @@ class EnvironmentVariables {
   @Min(1)
   @Max(65535)
   REDIS_PORT: number;
+
+  @IsString()
+  JWT_SECRET: string;
 }
 
 export function validate(config: Record<string, unknown>) {
