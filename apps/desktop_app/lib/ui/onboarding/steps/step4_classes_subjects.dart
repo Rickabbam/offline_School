@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../onboarding_models.dart';
+import 'package:desktop_app/ui/onboarding/onboarding_models.dart';
 
 class Step4ClassesSubjects extends StatefulWidget {
   const Step4ClassesSubjects({
@@ -99,9 +99,11 @@ class _Step4ClassesSubjectsState extends State<Step4ClassesSubjects> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Classes, Arms & Subjects', style: Theme.of(context).textTheme.headlineSmall),
+          Text('Classes, Arms & Subjects',
+              style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 4),
-          const Text('Enter one class level per line using "Level:Arm,Arm". Enter one subject per line using "Subject:Code".'),
+          const Text(
+              'Enter one class level per line using "Level:Arm,Arm". Enter one subject per line using "Subject:Code".'),
           const SizedBox(height: 24),
           Expanded(
             child: Row(
@@ -115,7 +117,8 @@ class _Step4ClassesSubjectsState extends State<Step4ClassesSubjects> {
                       labelText: 'Class Levels & Arms *',
                       border: OutlineInputBorder(),
                     ),
-                    validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null,
+                    validator: (v) =>
+                        (v?.trim().isEmpty ?? true) ? 'Required' : null,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -128,7 +131,8 @@ class _Step4ClassesSubjectsState extends State<Step4ClassesSubjects> {
                       labelText: 'Subjects *',
                       border: OutlineInputBorder(),
                     ),
-                    validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null,
+                    validator: (v) =>
+                        (v?.trim().isEmpty ?? true) ? 'Required' : null,
                   ),
                 ),
               ],
@@ -138,7 +142,8 @@ class _Step4ClassesSubjectsState extends State<Step4ClassesSubjects> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              OutlinedButton(onPressed: widget.onBack, child: const Text('Back')),
+              OutlinedButton(
+                  onPressed: widget.onBack, child: const Text('Back')),
               FilledButton(onPressed: _submit, child: const Text('Continue')),
             ],
           ),

@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 
-import '../../auth/auth_service.dart';
-import 'onboarding_models.dart';
+import 'package:desktop_app/auth/auth_service.dart';
+import 'package:desktop_app/ui/onboarding/onboarding_models.dart';
 
 class OnboardingService {
   OnboardingService(this._auth);
@@ -50,9 +50,7 @@ class OnboardingService {
               (level) => {
                 'name': level.name,
                 'sortOrder': level.sortOrder,
-                'arms': level.arms
-                    .map((arm) => {'arm': arm})
-                    .toList(),
+                'arms': level.arms.map((arm) => {'arm': arm}).toList(),
               },
             )
             .toList(),

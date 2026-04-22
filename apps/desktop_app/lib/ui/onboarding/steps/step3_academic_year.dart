@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../onboarding_models.dart';
+import 'package:desktop_app/ui/onboarding/onboarding_models.dart';
 
 class Step3AcademicYear extends StatefulWidget {
   const Step3AcademicYear({
@@ -68,7 +68,11 @@ class _Step3AcademicYearState extends State<Step3AcademicYear> {
     _labelCtrl.dispose();
     _startCtrl.dispose();
     _endCtrl.dispose();
-    for (final controller in [..._termNameCtrls, ..._termStartCtrls, ..._termEndCtrls]) {
+    for (final controller in [
+      ..._termNameCtrls,
+      ..._termStartCtrls,
+      ..._termEndCtrls
+    ]) {
       controller.dispose();
     }
     super.dispose();
@@ -105,7 +109,8 @@ class _Step3AcademicYearState extends State<Step3AcademicYear> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Academic Year & Terms', style: Theme.of(context).textTheme.headlineSmall),
+          Text('Academic Year & Terms',
+              style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 4),
           const Text('Configure the current academic year and its terms.'),
           const SizedBox(height: 24),
@@ -129,7 +134,8 @@ class _Step3AcademicYearState extends State<Step3AcademicYear> {
                     hintText: 'YYYY-MM-DD',
                     border: OutlineInputBorder(),
                   ),
-                  validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null,
+                  validator: (v) =>
+                      (v?.trim().isEmpty ?? true) ? 'Required' : null,
                 ),
               ),
               const SizedBox(width: 16),
@@ -141,7 +147,8 @@ class _Step3AcademicYearState extends State<Step3AcademicYear> {
                     hintText: 'YYYY-MM-DD',
                     border: OutlineInputBorder(),
                   ),
-                  validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null,
+                  validator: (v) =>
+                      (v?.trim().isEmpty ?? true) ? 'Required' : null,
                 ),
               ),
             ],
@@ -166,7 +173,8 @@ class _Step3AcademicYearState extends State<Step3AcademicYear> {
                             labelText: 'Term Name *',
                             border: OutlineInputBorder(),
                           ),
-                          validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null,
+                          validator: (v) =>
+                              (v?.trim().isEmpty ?? true) ? 'Required' : null,
                         ),
                         const SizedBox(height: 12),
                         Row(
@@ -179,7 +187,9 @@ class _Step3AcademicYearState extends State<Step3AcademicYear> {
                                   hintText: 'YYYY-MM-DD',
                                   border: OutlineInputBorder(),
                                 ),
-                                validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null,
+                                validator: (v) => (v?.trim().isEmpty ?? true)
+                                    ? 'Required'
+                                    : null,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -191,7 +201,9 @@ class _Step3AcademicYearState extends State<Step3AcademicYear> {
                                   hintText: 'YYYY-MM-DD',
                                   border: OutlineInputBorder(),
                                 ),
-                                validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null,
+                                validator: (v) => (v?.trim().isEmpty ?? true)
+                                    ? 'Required'
+                                    : null,
                               ),
                             ),
                           ],
@@ -206,7 +218,8 @@ class _Step3AcademicYearState extends State<Step3AcademicYear> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              OutlinedButton(onPressed: widget.onBack, child: const Text('Back')),
+              OutlinedButton(
+                  onPressed: widget.onBack, child: const Text('Back')),
               FilledButton(onPressed: _submit, child: const Text('Continue')),
             ],
           ),

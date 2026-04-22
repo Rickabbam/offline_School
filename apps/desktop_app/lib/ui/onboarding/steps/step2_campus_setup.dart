@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../onboarding_models.dart';
+import 'package:desktop_app/ui/onboarding/onboarding_models.dart';
 
 class Step2CampusSetup extends StatefulWidget {
   const Step2CampusSetup({
@@ -66,7 +66,8 @@ class _Step2CampusSetupState extends State<Step2CampusSetup> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Campus Setup', style: Theme.of(context).textTheme.headlineSmall),
+          Text('Campus Setup',
+              style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 4),
           const Text('Register the campus that this installation serves.'),
           const SizedBox(height: 24),
@@ -121,7 +122,8 @@ class _Step2CampusSetupState extends State<Step2CampusSetup> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              OutlinedButton(onPressed: widget.onBack, child: const Text('Back')),
+              OutlinedButton(
+                  onPressed: widget.onBack, child: const Text('Back')),
               FilledButton(onPressed: _submit, child: const Text('Continue')),
             ],
           ),

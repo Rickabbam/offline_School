@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../onboarding_models.dart';
+import 'package:desktop_app/ui/onboarding/onboarding_models.dart';
 
 class Step1SchoolProfile extends StatefulWidget {
   const Step1SchoolProfile({
@@ -79,9 +79,28 @@ class _Step1SchoolProfileState extends State<Step1SchoolProfile> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('School Profile', style: Theme.of(context).textTheme.headlineSmall),
+          Text('School Profile',
+              style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 4),
           const Text('Enter your school\'s basic information.'),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome_outlined),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Your school type will prefill starter templates for classes, subjects, grading, fee categories, and staffing defaults.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 24),
           Row(
             children: [
@@ -92,7 +111,8 @@ class _Step1SchoolProfileState extends State<Step1SchoolProfile> {
                     labelText: 'School Name *',
                     border: OutlineInputBorder(),
                   ),
-                  validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null,
+                  validator: (v) =>
+                      (v?.trim().isEmpty ?? true) ? 'Required' : null,
                 ),
               ),
               const SizedBox(width: 16),
@@ -109,16 +129,19 @@ class _Step1SchoolProfileState extends State<Step1SchoolProfile> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            value: _schoolType,
+            initialValue: _schoolType,
             decoration: const InputDecoration(
               labelText: 'School Type *',
               border: OutlineInputBorder(),
             ),
             items: const [
               DropdownMenuItem(value: 'basic', child: Text('Basic School')),
-              DropdownMenuItem(value: 'jhs', child: Text('Junior High School (JHS)')),
-              DropdownMenuItem(value: 'shs', child: Text('Senior High School (SHS)')),
-              DropdownMenuItem(value: 'combined', child: Text('Combined School')),
+              DropdownMenuItem(
+                  value: 'jhs', child: Text('Junior High School (JHS)')),
+              DropdownMenuItem(
+                  value: 'shs', child: Text('Senior High School (SHS)')),
+              DropdownMenuItem(
+                  value: 'combined', child: Text('Combined School')),
             ],
             onChanged: (v) => setState(() => _schoolType = v ?? 'basic'),
           ),

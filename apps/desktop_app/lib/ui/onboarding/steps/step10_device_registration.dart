@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../auth/auth_service.dart';
+import 'package:desktop_app/auth/auth_service.dart';
+import 'package:desktop_app/ui/onboarding/onboarding_models.dart';
 
 class Step10DeviceRegistration extends StatefulWidget {
   const Step10DeviceRegistration({
     super.key,
+    required this.initialValue,
     required this.onNext,
     required this.onBack,
   });
 
-  final VoidCallback onNext;
+  final DeviceRegistrationDraft initialValue;
+  final ValueChanged<DeviceRegistrationDraft> onNext;
   final VoidCallback onBack;
 
   @override
@@ -19,10 +22,20 @@ class Step10DeviceRegistration extends StatefulWidget {
 }
 
 class _Step10DeviceRegistrationState extends State<Step10DeviceRegistration> {
-  final _deviceNameCtrl = TextEditingController();
+  late final TextEditingController _deviceNameCtrl;
   bool _registering = false;
   String? _message;
-  bool _registered = false;
+  late bool _registerOfflineAccess;
+  late bool _registered;
+
+  @override
+  void initState() {
+    super.initState();
+    _deviceNameCtrl =
+        TextEditingController(text: widget.initialValue.deviceName);
+    _registerOfflineAccess = widget.initialValue.registerOfflineAccess;
+    _registered = widget.initialValue.isRegistered;
+  }
 
   @override
   void dispose() {
@@ -62,6 +75,7 @@ class _Step10DeviceRegistrationState extends State<Step10DeviceRegistration> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
+    final resolvedDeviceName = _deviceNameCtrl.text.trim();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -71,7 +85,9 @@ class _Step10DeviceRegistrationState extends State<Step10DeviceRegistration> {
           style: Theme.of(context).textTheme.headlineSmall,
         ),
         const SizedBox(height: 4),
-        const Text('Register this device for trusted offline access.'),
+        const Text(
+          'Register this device for trusted offline access before handing the workstation to school staff.',
+        ),
         const SizedBox(height: 24),
         Expanded(
           child: Center(
@@ -96,18 +112,42 @@ class _Step10DeviceRegistrationState extends State<Step10DeviceRegistration> {
                           border: OutlineInputBorder(),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        value: _registerOfflineAccess,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                            'Enable trusted offline login on this device'),
+                        subtitle: const Text(
+                          'Recommended for the main front-desk or admin office workstation.',
+                        ),
+                        onChanged: (value) {
+                          setState(
+                              () => _registerOfflineAccess = value ?? true);
+                        },
+                      ),
                       const SizedBox(height: 16),
                       FilledButton.icon(
-                        onPressed:
-                            _registering || auth.currentUser == null
-                                ? null
-                                : _registerDevice,
+                        onPressed: _registering ||
+                                auth.currentUser == null ||
+                                !_registerOfflineAccess
+                            ? null
+                            : _registerDevice,
                         icon: const Icon(Icons.lock_open_outlined),
                         label: Text(
                           _registering
                               ? 'Registering...'
                               : 'Register Trusted Device',
                         ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _registered
+                            ? 'Status: device registered'
+                            : _registerOfflineAccess
+                                ? 'Status: pending registration'
+                                : 'Status: offline login disabled for now',
                       ),
                       if (_message != null) ...[
                         const SizedBox(height: 16),
@@ -135,7 +175,15 @@ class _Step10DeviceRegistrationState extends State<Step10DeviceRegistration> {
               child: const Text('Back'),
             ),
             FilledButton(
-              onPressed: widget.onNext,
+              onPressed: () {
+                widget.onNext(
+                  DeviceRegistrationDraft(
+                    deviceName: resolvedDeviceName,
+                    registerOfflineAccess: _registerOfflineAccess,
+                    isRegistered: _registerOfflineAccess ? _registered : false,
+                  ),
+                );
+              },
               child: const Text('Continue'),
             ),
           ],
