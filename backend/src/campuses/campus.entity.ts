@@ -40,6 +40,9 @@ export class Campus {
   @Column({ name: 'deleted', type: 'boolean', default: false })
   deleted: boolean;
 
+  @Column({ name: 'server_revision', type: 'bigint', default: 0 })
+  serverRevision: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

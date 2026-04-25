@@ -175,6 +175,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   SettingsWorkspaceData _copyData({
+    Map<String, dynamic>? tenant,
     Map<String, dynamic>? school,
     Map<String, dynamic>? campus,
     List<Map<String, dynamic>>? academicYears,
@@ -183,9 +184,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     List<Map<String, dynamic>>? classArms,
     List<Map<String, dynamic>>? subjects,
     List<Map<String, dynamic>>? gradingSchemes,
+    List<Map<String, dynamic>>? trustedDevices,
+    List<Map<String, dynamic>>? auditEntries,
   }) {
     final data = _data!;
     return SettingsWorkspaceData(
+      tenant: tenant ?? data.tenant,
       school: school ?? data.school,
       campus: campus ?? data.campus,
       academicYears: academicYears ?? data.academicYears,
@@ -194,6 +198,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       classArms: classArms ?? data.classArms,
       subjects: subjects ?? data.subjects,
       gradingSchemes: gradingSchemes ?? data.gradingSchemes,
+      trustedDevices: trustedDevices ?? data.trustedDevices,
+      auditEntries: auditEntries ?? data.auditEntries,
     );
   }
 
@@ -1096,6 +1102,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildAcademicManagement(context),
           const SizedBox(height: 24),
           _buildAcademicSnapshot(context, data),
+          const SizedBox(height: 24),
+          _buildControlPlaneSnapshot(context, data),
         ],
       ),
     );
@@ -1771,6 +1779,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildControlPlaneSnapshot(
+      BuildContext context, SettingsWorkspaceData data) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Control Plane Activity',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            Text(
+              'Recent trusted-device and workflow changes for the active scope.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: [
+                _MetricCard(
+                  label: 'Trusted Devices',
+                  value: '${data.trustedDevices.length}',
+                ),
+                _MetricCard(
+                  label: 'Recent Audit Events',
+                  value: '${data.auditEntries.length}',
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _AuditEntryList(entries: data.auditEntries),
+          ],
+        ),
+      ),
+    );
+  }
+
   List<Map<String, dynamic>> _parseBands(String raw) {
     final lines = raw
         .split('\n')
@@ -1962,6 +2008,66 @@ class _FeedbackBanner extends StatelessWidget {
               : colorScheme.onSecondaryContainer,
         ),
       ),
+    );
+  }
+}
+
+class _AuditEntryList extends StatelessWidget {
+  const _AuditEntryList({required this.entries});
+
+  final List<Map<String, dynamic>> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) {
+      return Text(
+        'No recent audit activity in this scope.',
+        style: Theme.of(context).textTheme.bodyMedium,
+      );
+    }
+
+    return Column(
+      children: entries.take(8).map((entry) {
+        final eventType = '${entry['eventType'] ?? 'unknown_event'}';
+        final entityLabel =
+            '${entry['entityType'] ?? 'record'}/${entry['entityId'] ?? 'unknown'}';
+        final createdAt = '${entry['createdAt'] ?? ''}';
+        final metadata = entry['metadata'];
+        final metadataSummary = metadata is Map && metadata.isNotEmpty
+            ? metadata.entries
+                .take(2)
+                .map((item) => '${item.key}: ${item.value}')
+                .join(' • ')
+            : null;
+
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(eventType, style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 4),
+              Text(entityLabel,
+                  style: Theme.of(context).textTheme.bodyMedium),
+              const SizedBox(height: 4),
+              Text(createdAt, style: Theme.of(context).textTheme.bodySmall),
+              if (metadataSummary != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  metadataSummary,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList(growable: false),
     );
   }
 }

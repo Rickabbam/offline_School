@@ -31,6 +31,9 @@ export class Device {
   @Column({ name: 'tenant_id', type: 'uuid', nullable: true })
   tenantId: string | null;
 
+  @Column({ name: 'school_id', type: 'uuid', nullable: true })
+  schoolId: string | null;
+
   @Column({ name: 'campus_id', type: 'uuid', nullable: true })
   campusId: string | null;
 

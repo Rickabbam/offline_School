@@ -42,6 +42,9 @@ export class User {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @Column({ name: 'session_version', type: 'integer', default: 1 })
+  sessionVersion: number;
+
   @Column({ name: 'deleted', type: 'boolean', default: false })
   deleted: boolean;
 

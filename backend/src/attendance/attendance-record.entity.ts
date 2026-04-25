@@ -59,6 +59,9 @@ export class AttendanceRecord {
   @Column({ name: 'sync_status', type: 'varchar', length: 50, default: 'synced' })
   syncStatus: string;
 
+  @Column({ name: 'server_revision', type: 'bigint', default: 0 })
+  serverRevision: number;
+
   @Column({ name: 'deleted', type: 'boolean', default: false })
   deleted: boolean;
 

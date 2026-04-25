@@ -1,51 +1,84 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Campus } from './campus.entity';
-import { v4 as uuidv4 } from 'uuid';
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { DataSource, Repository } from "typeorm";
+import { Campus } from "./campus.entity";
+import { v4 as uuidv4 } from "uuid";
 
 @Injectable()
 export class CampusesService {
-  constructor(@InjectRepository(Campus) private readonly repo: Repository<Campus>) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    @InjectRepository(Campus) private readonly repo: Repository<Campus>,
+  ) {}
 
-  findAll(tenantId: string, schoolId?: string) {
-    const where: Record<string, unknown> = { tenantId, deleted: false };
-    if (schoolId) where['schoolId'] = schoolId;
-    return this.repo.find({ where });
+  findAll(tenantId: string, schoolId: string, campusId?: string | null) {
+    return this.repo.find({
+      where: {
+        tenantId,
+        schoolId,
+        ...(campusId ? { id: campusId } : {}),
+        deleted: false,
+      },
+    });
   }
 
-  findById(tenantId: string, id: string, schoolId?: string) {
-    const where: Record<string, unknown> = { id, tenantId, deleted: false };
-    if (schoolId) where['schoolId'] = schoolId;
-    return this.repo.findOne({ where });
+  findById(
+    tenantId: string,
+    id: string,
+    schoolId: string,
+    campusId?: string | null,
+  ) {
+    if (campusId && id !== campusId) {
+      return null;
+    }
+
+    return this.repo.findOne({ where: { id, tenantId, schoolId, deleted: false } });
   }
 
-  async create(data: Partial<Campus>) {
+  async create(tenantId: string, schoolId: string, data: Partial<Campus>) {
+    const registrationCode =
+      data.registrationCode?.trim() || uuidv4().split("-")[0].toUpperCase();
     const campus = this.repo.create({
       ...data,
-      registrationCode: uuidv4().split('-')[0].toUpperCase(),
+      tenantId,
+      schoolId,
+      registrationCode,
+      serverRevision: await this.nextServerRevision(),
     });
     return this.repo.save(campus);
   }
 
-  async update(tenantId: string, id: string, data: Partial<Campus>, schoolId?: string) {
+  async update(
+    tenantId: string,
+    id: string,
+    data: Partial<Campus>,
+    schoolId: string,
+  ) {
     const campus = await this.repo.findOne({
-      where: schoolId
-          ? { id, tenantId, schoolId, deleted: false }
-          : { id, tenantId, deleted: false },
+      where: { id, tenantId, schoolId, deleted: false },
     });
-    if (!campus) throw new NotFoundException('Campus not found.');
-    await this.repo.update(id, data);
-    return this.findById(tenantId, id, schoolId);
+    if (!campus) throw new NotFoundException("Campus not found.");
+    Object.assign(campus, data, {
+      serverRevision: await this.nextServerRevision(),
+    });
+    return this.repo.save(campus);
   }
 
-  async remove(tenantId: string, id: string, schoolId?: string) {
+  async remove(tenantId: string, id: string, schoolId: string) {
     const campus = await this.repo.findOne({
-      where: schoolId
-          ? { id, tenantId, schoolId, deleted: false }
-          : { id, tenantId, deleted: false },
+      where: { id, tenantId, schoolId, deleted: false },
     });
-    if (!campus) throw new NotFoundException('Campus not found.');
-    await this.repo.update(id, { deleted: true });
+    if (!campus) throw new NotFoundException("Campus not found.");
+    await this.repo.update(id, {
+      deleted: true,
+      serverRevision: await this.nextServerRevision(),
+    });
+  }
+
+  private async nextServerRevision() {
+    const result = (await this.dataSource.query(
+      "SELECT nextval('sync_server_revision_seq')::bigint AS revision",
+    )) as { revision: string | number }[];
+    return Number(result[0].revision);
   }
 }

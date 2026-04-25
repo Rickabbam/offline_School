@@ -33,6 +33,9 @@ export class AcademicYear {
   @Column({ name: 'deleted', type: 'boolean', default: false })
   deleted: boolean;
 
+  @Column({ name: 'server_revision', type: 'bigint', default: 0 })
+  serverRevision: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
@@ -73,6 +76,9 @@ export class Term {
   @Column({ name: 'deleted', type: 'boolean', default: false })
   deleted: boolean;
 
+  @Column({ name: 'server_revision', type: 'bigint', default: 0 })
+  serverRevision: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
@@ -100,6 +106,9 @@ export class ClassLevel {
 
   @Column({ name: 'deleted', type: 'boolean', default: false })
   deleted: boolean;
+
+  @Column({ name: 'server_revision', type: 'bigint', default: 0 })
+  serverRevision: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
@@ -133,6 +142,9 @@ export class ClassArm {
   @Column({ name: 'deleted', type: 'boolean', default: false })
   deleted: boolean;
 
+  @Column({ name: 'server_revision', type: 'bigint', default: 0 })
+  serverRevision: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
@@ -159,6 +171,9 @@ export class Subject {
 
   @Column({ name: 'deleted', type: 'boolean', default: false })
   deleted: boolean;
+
+  @Column({ name: 'server_revision', type: 'bigint', default: 0 })
+  serverRevision: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
@@ -193,6 +208,9 @@ export class GradingScheme {
 
   @Column({ name: 'deleted', type: 'boolean', default: false })
   deleted: boolean;
+
+  @Column({ name: 'server_revision', type: 'bigint', default: 0 })
+  serverRevision: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

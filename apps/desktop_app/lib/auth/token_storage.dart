@@ -12,6 +12,7 @@ class TokenStorage {
   static const _keyOfflineToken = 'offline_token';
   static const _keyDeviceFingerprint = 'device_fingerprint';
   static const _keyUserJson = 'current_user_json';
+  static const _keyTrustedUserJson = 'trusted_user_json';
 
   // ─── Access token ──────────────────────────────────────────────────────────
   Future<void> saveAccessToken(String token) =>
@@ -40,6 +41,26 @@ class TokenStorage {
   Future<void> saveUserJson(String json) =>
       _storage.write(key: _keyUserJson, value: json);
   Future<String?> getUserJson() => _storage.read(key: _keyUserJson);
+  Future<void> clearUserJson() => _storage.delete(key: _keyUserJson);
+
+  Future<void> saveTrustedUserJson(String json) =>
+      _storage.write(key: _keyTrustedUserJson, value: json);
+  Future<String?> getTrustedUserJson() =>
+      _storage.read(key: _keyTrustedUserJson);
+  Future<void> clearTrustedUserJson() =>
+      _storage.delete(key: _keyTrustedUserJson);
+
+  Future<void> clearSession() async {
+    await clearAccessToken();
+    await clearRefreshToken();
+    await clearUserJson();
+  }
+
+  Future<void> clearTrustedDevice() async {
+    await _storage.delete(key: _keyOfflineToken);
+    await _storage.delete(key: _keyDeviceFingerprint);
+    await clearTrustedUserJson();
+  }
 
   /// Clear all auth state (on logout or device deregistration).
   Future<void> clearAll() => _storage.deleteAll();

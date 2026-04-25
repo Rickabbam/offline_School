@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { StudentsService } from './students.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { requireSchoolScope } from '../auth/request-scope';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UserRole } from '../users/user-role.enum';
@@ -18,38 +19,65 @@ export class StudentsController {
   @Get()
   @Roles(UserRole.Admin, UserRole.Teacher)
   findAll(@Request() req: { user: User }, @Query('search') search?: string) {
-    return this.svc.findAll(req.user.tenantId!, req.user.schoolId!, search);
+    const scope = requireSchoolScope(req.user);
+    return this.svc.findAll(
+      scope.tenantId,
+      scope.schoolId,
+      scope.campusId,
+      search,
+    );
   }
 
   @Get(':id')
   @Roles(UserRole.Admin, UserRole.Teacher)
   findOne(@Request() req: { user: User }, @Param('id') id: string) {
-    return this.svc.findById(req.user.tenantId!, req.user.schoolId!, id);
+    const scope = requireSchoolScope(req.user);
+    return this.svc.findById(scope.tenantId, scope.schoolId, scope.campusId, id);
   }
 
   @Post()
   @Roles(UserRole.Admin, UserRole.Teacher)
   create(@Request() req: { user: User }, @Body() dto: CreateStudentDto) {
-    return this.svc.create(req.user.tenantId!, req.user.schoolId!, dto);
+    const scope = requireSchoolScope(req.user);
+    return this.svc.create(
+      scope.tenantId,
+      scope.schoolId,
+      scope.campusId,
+      dto,
+    );
   }
 
   @Patch(':id')
   @Roles(UserRole.Admin, UserRole.Teacher)
   update(@Request() req: { user: User }, @Param('id') id: string, @Body() body: Partial<CreateStudentDto>) {
-    return this.svc.update(req.user.tenantId!, req.user.schoolId!, id, body);
+    const scope = requireSchoolScope(req.user);
+    return this.svc.update(
+      scope.tenantId,
+      scope.schoolId,
+      scope.campusId,
+      id,
+      body,
+    );
   }
 
   @Delete(':id')
   @Roles(UserRole.Admin)
   remove(@Request() req: { user: User }, @Param('id') id: string) {
-    return this.svc.remove(req.user.tenantId!, req.user.schoolId!, id);
+    const scope = requireSchoolScope(req.user);
+    return this.svc.remove(scope.tenantId, scope.schoolId, scope.campusId, id);
   }
 
   // ─── Guardians ──────────────────────────────────────────────────────────────
   @Get(':id/guardians')
   @Roles(UserRole.Admin, UserRole.Teacher)
   getGuardians(@Request() req: { user: User }, @Param('id') id: string) {
-    return this.svc.getGuardians(req.user.tenantId!, req.user.schoolId!, id);
+    const scope = requireSchoolScope(req.user);
+    return this.svc.getGuardians(
+      scope.tenantId,
+      scope.schoolId,
+      scope.campusId,
+      id,
+    );
   }
 
   @Post(':id/guardians')
@@ -59,17 +87,29 @@ export class StudentsController {
     @Param('id') studentId: string,
     @Body() body: Partial<Guardian>,
   ) {
-    return this.svc.addGuardian(req.user.tenantId!, req.user.schoolId!, {
-      ...body,
-      studentId,
-    });
+    const scope = requireSchoolScope(req.user);
+    return this.svc.addGuardian(
+      scope.tenantId,
+      scope.schoolId,
+      scope.campusId,
+      {
+        ...body,
+        studentId,
+      },
+    );
   }
 
   // ─── Enrollments ────────────────────────────────────────────────────────────
   @Get(':id/enrollments')
   @Roles(UserRole.Admin, UserRole.Teacher)
   getEnrollments(@Request() req: { user: User }, @Param('id') id: string) {
-    return this.svc.getEnrollments(req.user.tenantId!, req.user.schoolId!, id);
+    const scope = requireSchoolScope(req.user);
+    return this.svc.getEnrollments(
+      scope.tenantId,
+      scope.schoolId,
+      scope.campusId,
+      id,
+    );
   }
 
   @Post(':id/enrollments')
@@ -79,9 +119,15 @@ export class StudentsController {
     @Param('id') studentId: string,
     @Body() body: Partial<Enrollment>,
   ) {
-    return this.svc.enroll(req.user.tenantId!, req.user.schoolId!, {
-      ...body,
-      studentId,
-    });
+    const scope = requireSchoolScope(req.user);
+    return this.svc.enroll(
+      scope.tenantId,
+      scope.schoolId,
+      scope.campusId,
+      {
+        ...body,
+        studentId,
+      },
+    );
   }
 }

@@ -13,6 +13,8 @@ export interface JwtPayload {
   tenantId: string | null;
   schoolId: string | null;
   campusId: string | null;
+  sessionVersion: number;
+  deviceFingerprint?: string | null;
   tokenType: 'access' | 'refresh';
 }
 
@@ -40,6 +42,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user) {
       throw new UnauthorizedException('User not found or inactive.');
     }
+
+    if (
+      user.tenantId !== payload.tenantId ||
+      user.schoolId !== payload.schoolId ||
+      user.campusId !== payload.campusId
+    ) {
+      throw new UnauthorizedException(
+        'Token scope is stale. Sign in again to refresh workspace access.',
+      );
+    }
+
+    if (user.sessionVersion !== payload.sessionVersion) {
+      throw new UnauthorizedException(
+        'Token session is no longer active. Sign in again.',
+      );
+    }
+
     return user;
   }
 }

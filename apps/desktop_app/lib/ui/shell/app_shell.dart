@@ -3,9 +3,14 @@ import 'package:provider/provider.dart';
 
 import 'package:desktop_app/auth/auth_service.dart';
 import 'package:desktop_app/auth/role_access.dart';
+import 'package:desktop_app/backup/backup_service.dart';
+import 'package:desktop_app/database/app_database.dart';
+import 'package:desktop_app/sync/sync_service.dart';
 import 'package:desktop_app/ui/admissions/applicant_list_screen.dart';
 import 'package:desktop_app/ui/attendance/attendance_screen.dart';
 import 'package:desktop_app/ui/attendance/attendance_workspace_service.dart';
+import 'package:desktop_app/ui/finance/finance_screen.dart';
+import 'package:desktop_app/ui/finance/finance_service.dart';
 import 'package:desktop_app/ui/onboarding/onboarding_wizard.dart';
 import 'package:desktop_app/ui/reports/reports_screen.dart';
 import 'package:desktop_app/ui/reports/reports_service.dart';
@@ -128,21 +133,35 @@ class _AppShellState extends State<AppShell> {
         return const ApplicantListScreen();
       case ShellSection.attendance:
         return AttendanceScreen(
-          service: AttendanceWorkspaceService(context.read<AuthService>()),
+          service: AttendanceWorkspaceService(context.read<AppDatabase>()),
         );
       case ShellSection.settings:
         return SettingsScreen(
-          service: SettingsService(context.read<AuthService>()),
+          service: SettingsService(
+            context.read<AuthService>(),
+            context.read<AppDatabase>(),
+          ),
         );
       case ShellSection.reports:
         return ReportsScreen(
-          service: ReportsService(context.read<AuthService>()),
+          service: ReportsService(
+            auth: context.read<AuthService>(),
+            db: context.read<AppDatabase>(),
+            backup: context.read<BackupService>(),
+            sync: context.read<SyncService>(),
+          ),
         );
       case ShellSection.onboarding:
         return OnboardingWizard(
           onCompleted: () => _onNavSelected(ShellSection.dashboard),
         );
       case ShellSection.finance:
+        return FinanceScreen(
+          service: FinanceService(
+            context.read<AuthService>(),
+            context.read<AppDatabase>(),
+          ),
+        );
       case ShellSection.exams:
         return _PlaceholderModule(title: _pageTitle(section));
     }

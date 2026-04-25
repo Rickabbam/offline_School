@@ -1,6 +1,4 @@
-import 'package:dio/dio.dart';
-
-import 'package:desktop_app/auth/auth_service.dart';
+import 'package:desktop_app/database/app_database.dart';
 
 class AttendanceWorkspaceData {
   const AttendanceWorkspaceData({
@@ -19,25 +17,44 @@ class AttendanceWorkspaceData {
 }
 
 class AttendanceWorkspaceService {
-  AttendanceWorkspaceService(this._auth);
+  AttendanceWorkspaceService(this._db);
 
-  final AuthService _auth;
+  final AppDatabase _db;
 
-  Dio get _client => _auth.createAuthenticatedClient();
-
-  Future<AttendanceWorkspaceData> loadWorkspace() async {
-    final yearsResponse = await _client.get<List<dynamic>>('/academic/years');
-    final termsResponse = await _client.get<List<dynamic>>('/academic/terms');
-    final classArmsResponse =
-        await _client.get<List<dynamic>>('/academic/class-arms');
-
-    final years = _asListOfMaps(yearsResponse.data);
-    final terms = _asListOfMaps(termsResponse.data);
-    final classArms = _asListOfMaps(classArmsResponse.data)
-      ..sort((a, b) => _labelForClassArm(a).compareTo(_labelForClassArm(b)));
-
+  Future<AttendanceWorkspaceData> loadWorkspace(LocalDataScope scope) async {
+    final years = (await _db.getAcademicYears(scope: scope))
+        .map(
+          (item) => <String, dynamic>{
+            'id': item.id,
+            'label': item.label,
+            'isCurrent': item.isCurrent,
+          },
+        )
+        .toList(growable: false);
     final currentYear = _findCurrent(years);
     final currentYearId = currentYear == null ? null : '${currentYear['id']}';
+    final terms = (await _db.getTerms(scope: scope, academicYearId: currentYearId))
+        .map(
+          (item) => <String, dynamic>{
+            'id': item.id,
+            'academicYearId': item.academicYearId,
+            'name': item.name,
+            'termNumber': item.termNumber,
+            'isCurrent': item.isCurrent,
+          },
+        )
+        .toList(growable: false);
+    final classArms = (await _db.getClassArms(scope: scope))
+        .map(
+          (item) => <String, dynamic>{
+            'id': item.id,
+            'classLevelId': item.classLevelId,
+            'arm': item.arm,
+            'displayName': item.displayName,
+          },
+        )
+        .toList(growable: false)
+      ..sort((a, b) => _labelForClassArm(a).compareTo(_labelForClassArm(b)));
     final currentTerm = _findCurrent(
       terms.where((term) {
         if (currentYearId == null) {
@@ -55,12 +72,6 @@ class AttendanceWorkspaceService {
       currentTermId: currentTerm == null ? null : '${currentTerm['id']}',
       currentTermLabel: currentTerm == null ? null : '${currentTerm['name']}',
     );
-  }
-
-  List<Map<String, dynamic>> _asListOfMaps(List<dynamic>? raw) {
-    return (raw ?? const [])
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .toList(growable: false);
   }
 
   Map<String, dynamic>? _findCurrent(List<Map<String, dynamic>> items) {

@@ -14,6 +14,11 @@ export enum EmploymentType {
   Volunteer = 'volunteer',
 }
 
+export enum StaffAssignmentType {
+  ClassTeacher = 'class_teacher',
+  SubjectTeacher = 'subject_teacher',
+}
+
 @Entity('staff')
 export class Staff {
   @PrimaryGeneratedColumn('uuid')
@@ -53,6 +58,9 @@ export class Staff {
   @Column({ type: 'varchar', length: 255, nullable: true })
   email: string | null;
 
+  @Column({ type: 'varchar', length: 150, nullable: true })
+  department: string | null;
+
   @Column({
     name: 'system_role',
     type: 'enum',
@@ -77,6 +85,49 @@ export class Staff {
 
   @Column({ name: 'sync_status', type: 'varchar', length: 50, default: 'synced' })
   syncStatus: string;
+
+  @Column({ name: 'server_revision', type: 'bigint', default: 0 })
+  serverRevision: number;
+
+  @Column({ name: 'deleted', type: 'boolean', default: false })
+  deleted: boolean;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
+}
+
+@Entity('staff_teaching_assignments')
+export class StaffTeachingAssignment {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ name: 'tenant_id', type: 'uuid' })
+  tenantId: string;
+
+  @Column({ name: 'school_id', type: 'uuid' })
+  schoolId: string;
+
+  @Column({ name: 'staff_id', type: 'uuid' })
+  staffId: string;
+
+  @Column({
+    name: 'assignment_type',
+    type: 'enum',
+    enum: StaffAssignmentType,
+  })
+  assignmentType: StaffAssignmentType;
+
+  @Column({ name: 'subject_id', type: 'uuid', nullable: true })
+  subjectId: string | null;
+
+  @Column({ name: 'class_arm_id', type: 'uuid', nullable: true })
+  classArmId: string | null;
+
+  @Column({ name: 'server_revision', type: 'bigint', default: 0 })
+  serverRevision: number;
 
   @Column({ name: 'deleted', type: 'boolean', default: false })
   deleted: boolean;

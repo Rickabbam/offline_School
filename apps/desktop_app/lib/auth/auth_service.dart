@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
 import 'package:uuid/uuid.dart';
 
-import 'token_storage.dart';
+import 'package:desktop_app/auth/token_storage.dart';
 
 /// Model of the currently authenticated user.
 class AuthUser {
@@ -80,25 +80,46 @@ class AuthService extends ChangeNotifier {
   bool get isAuthenticated => _state == AuthState.authenticated;
   bool get isOfflineSession => _isOfflineSession;
 
+  Future<String?> getDeviceFingerprint() => _storage.getDeviceFingerprint();
+  Future<String> ensureDeviceFingerprint() => _getOrCreateDeviceFingerprint();
+
+  Future<bool> hasTrustedDeviceAccess() async {
+    final offlineToken = await _storage.getOfflineToken();
+    final fingerprint = await _storage.getDeviceFingerprint();
+    final trustedUserJson = await _storage.getTrustedUserJson();
+    return offlineToken != null &&
+        offlineToken.isNotEmpty &&
+        fingerprint != null &&
+        fingerprint.isNotEmpty &&
+        trustedUserJson != null &&
+        trustedUserJson.isNotEmpty;
+  }
+
   /// Call once at app startup. Attempts to restore session from stored tokens.
   Future<void> initialise() async {
     _dio = _buildDio();
 
     final userJson = await _storage.getUserJson();
-    if (userJson == null) {
-      _setUnauthenticated();
-      return;
-    }
-
     final accessToken = await _storage.getAccessToken();
-    if (accessToken != null) {
-      _currentUser =
-          AuthUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
+    if (accessToken != null && userJson != null) {
       _dio.options.headers['Authorization'] = 'Bearer $accessToken';
-      _isOfflineSession = false;
-      _state = AuthState.authenticated;
-      notifyListeners();
-      return;
+      try {
+        final recoveredUser = await _recoverOnlineSession();
+        _setAuthenticated(recoveredUser, isOfflineSession: false);
+        return;
+      } on DioException catch (error) {
+        final networkFailure = error.type == DioExceptionType.connectionError ||
+            error.type == DioExceptionType.connectionTimeout ||
+            error.type == DioExceptionType.receiveTimeout ||
+            error.type == DioExceptionType.sendTimeout;
+        if (!networkFailure) {
+          await _storage.clearSession();
+          _dio.options.headers.remove('Authorization');
+        }
+      } catch (_) {
+        await _storage.clearSession();
+        _dio.options.headers.remove('Authorization');
+      }
     }
 
     // Try refresh token if access token missing.
@@ -116,13 +137,45 @@ class AuthService extends ChangeNotifier {
     final offlineToken = await _storage.getOfflineToken();
     final fingerprint = await _storage.getDeviceFingerprint();
     if (offlineToken != null && fingerprint != null) {
-      _currentUser =
-          AuthUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
-      _isOfflineSession = true;
-      _state = AuthState.authenticated;
-      _logger.i('Authenticated offline via device token.');
-      notifyListeners();
-      return;
+      try {
+        await _redeemOfflineTokenOnline(
+          deviceFingerprint: fingerprint,
+          offlineToken: offlineToken,
+        );
+        return;
+      } on DioException catch (error) {
+        final statusCode = error.response?.statusCode;
+        final networkFailure = error.type == DioExceptionType.connectionError ||
+            error.type == DioExceptionType.connectionTimeout ||
+            error.type == DioExceptionType.receiveTimeout ||
+            error.type == DioExceptionType.sendTimeout;
+        if (!networkFailure && statusCode != null && statusCode < 500) {
+          _logger.w(
+            'Trusted-device token was rejected online. Clearing cached offline auth.',
+          );
+          await _storage.clearSession();
+          await _storage.clearTrustedDevice();
+          _setUnauthenticated();
+          return;
+        }
+        _logger.i(
+          'Offline token could not be redeemed online, falling back to local trusted-device session.',
+        );
+      } catch (_) {
+        _logger.i(
+          'Offline token could not be redeemed online, falling back to local trusted-device session.',
+        );
+      }
+
+      if (userJson != null) {
+        _currentUser =
+            AuthUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
+        _isOfflineSession = true;
+        _state = AuthState.authenticated;
+        _logger.i('Authenticated offline via device token.');
+        notifyListeners();
+        return;
+      }
     }
 
     _setUnauthenticated();
@@ -133,11 +186,175 @@ class AuthService extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
+    final deviceFingerprint = await _getOrCreateDeviceFingerprint();
     final response = await _dio.post<Map<String, dynamic>>(
       '/auth/login',
-      data: {'email': email, 'password': password},
+      data: {
+        'email': email,
+        'password': password,
+        'deviceFingerprint': deviceFingerprint,
+      },
     );
 
+    final data = response.data!;
+    final user = AuthUser.fromJson(data['user'] as Map<String, dynamic>);
+
+    await _storage.saveAccessToken(data['accessToken'] as String);
+    await _storage.saveRefreshToken(data['refreshToken'] as String);
+    await _storage.saveUserJson(jsonEncode(user.toJson()));
+    await _storage.saveTrustedUserJson(jsonEncode(user.toJson()));
+
+    _dio.options.headers['Authorization'] = 'Bearer ${data['accessToken']}';
+    _setAuthenticated(user, isOfflineSession: false);
+
+    if (_canRegisterTrustedDevice(user)) {
+      try {
+        await ensureTrustedDeviceRegistered();
+      } catch (e) {
+        _logger.w('Trusted-device registration failed after login: $e');
+      }
+    }
+
+    return user;
+  }
+
+  /// Register this device for offline trusted-device login.
+  /// Must be called after a successful online login.
+  Future<String> registerDevice(String deviceName) async {
+    final fingerprint = await _getOrCreateDeviceFingerprint();
+
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/auth/register-device',
+      data: {'deviceName': deviceName, 'deviceFingerprint': fingerprint},
+    );
+
+    final offlineToken = response.data!['offlineToken'] as String;
+    await _storage.saveOfflineToken(offlineToken);
+    await _redeemOfflineTokenOnline(
+      deviceFingerprint: fingerprint,
+      offlineToken: offlineToken,
+    );
+    _logger.i('Device registered for offline access.');
+    return offlineToken;
+  }
+
+  Future<void> ensureTrustedDeviceRegistered([String? deviceName]) async {
+    final existingToken = await _storage.getOfflineToken();
+    if (existingToken != null) return;
+    final user = _currentUser;
+    if (user == null || !_canRegisterTrustedDevice(user)) {
+      throw StateError(
+        'Trusted device registration requires an assigned tenant and school workspace.',
+      );
+    }
+
+    final resolvedDeviceName = deviceName?.trim().isNotEmpty == true
+        ? deviceName!.trim()
+        : _defaultDeviceName();
+    await registerDevice(resolvedDeviceName);
+    notifyListeners();
+  }
+
+  Future<void> replaceTrustedDeviceCredentials({
+    required String offlineToken,
+    required AuthUser user,
+  }) async {
+    await _storage.saveOfflineToken(offlineToken);
+    await _storage.saveTrustedUserJson(jsonEncode(user.toJson()));
+    notifyListeners();
+  }
+
+  Future<void> clearTrustedDeviceAccessCache() async {
+    await _storage.clearTrustedDevice();
+    notifyListeners();
+  }
+
+  Future<void> logout() async {
+    final fingerprint = await _storage.getDeviceFingerprint();
+    if (_currentUser != null && !_isOfflineSession) {
+      try {
+        await createAuthenticatedClient().post<void>(
+          '/auth/logout',
+          data: {
+            if (fingerprint != null && fingerprint.isNotEmpty)
+              'deviceFingerprint': fingerprint,
+          },
+        );
+      } catch (error) {
+        _logger.w('Online logout call failed, clearing local session anyway: $error');
+      }
+    }
+    await _storage.clearSession();
+    _dio.options.headers.remove('Authorization');
+    _setUnauthenticated();
+  }
+
+  Future<void> revokeTrustedDeviceAccess() async {
+    final fingerprint = await _storage.getDeviceFingerprint();
+    if (fingerprint != null && _currentUser != null && !_isOfflineSession) {
+      await createAuthenticatedClient().post<void>(
+        '/devices/revoke-current',
+        data: {'deviceFingerprint': fingerprint},
+      );
+    }
+
+    await _storage.clearSession();
+    await _storage.clearTrustedDevice();
+    _dio.options.headers.remove('Authorization');
+    _setUnauthenticated();
+  }
+
+  Future<AuthUser> loginWithTrustedDevice() async {
+    final trustedUserJson = await _storage.getTrustedUserJson();
+    final offlineToken = await _storage.getOfflineToken();
+    final fingerprint = await _storage.getDeviceFingerprint();
+    if (trustedUserJson == null ||
+        offlineToken == null ||
+        fingerprint == null) {
+      throw StateError(
+        'Trusted device access is not available on this workstation.',
+      );
+    }
+
+    try {
+      await _redeemOfflineTokenOnline(
+        deviceFingerprint: fingerprint,
+        offlineToken: offlineToken,
+      );
+      return _currentUser!;
+    } on DioException catch (error) {
+      final statusCode = error.response?.statusCode;
+      final networkFailure = error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout;
+      if (!networkFailure && statusCode != null && statusCode < 500) {
+        await _storage.clearSession();
+        await _storage.clearTrustedDevice();
+        _setUnauthenticated();
+        throw StateError(
+          'Trusted device access has been revoked or no longer matches this school workspace.',
+        );
+      }
+    }
+
+    final user = AuthUser.fromJson(
+      jsonDecode(trustedUserJson) as Map<String, dynamic>,
+    );
+    await _storage.saveUserJson(jsonEncode(user.toJson()));
+    _setAuthenticated(user, isOfflineSession: true);
+    return user;
+  }
+
+  Future<void> _refreshOnline(String refreshToken) async {
+    final deviceFingerprint = await _storage.getDeviceFingerprint();
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/auth/refresh',
+      data: {
+        'refreshToken': refreshToken,
+        if (deviceFingerprint != null) 'deviceFingerprint': deviceFingerprint,
+      },
+    );
     final data = response.data!;
     final user = AuthUser.fromJson(data['user'] as Map<String, dynamic>);
 
@@ -147,56 +364,43 @@ class AuthService extends ChangeNotifier {
 
     _dio.options.headers['Authorization'] = 'Bearer ${data['accessToken']}';
     _setAuthenticated(user, isOfflineSession: false);
+  }
 
-    try {
-      await ensureTrustedDeviceRegistered();
-    } catch (e) {
-      _logger.w('Trusted-device registration failed after login: $e');
+  Future<AuthUser> _recoverOnlineSession() async {
+    final response = await _dio.get<Map<String, dynamic>>('/auth/me');
+    final data = response.data;
+    if (data == null) {
+      throw StateError('Authenticated session recovery returned no user payload.');
     }
 
+    final user = AuthUser.fromJson(data);
+    await _storage.saveUserJson(jsonEncode(user.toJson()));
+    await _storage.saveTrustedUserJson(jsonEncode(user.toJson()));
+    _currentUser = user;
+    _isOfflineSession = false;
     return user;
   }
 
-  /// Register this device for offline trusted-device login.
-  /// Must be called after a successful online login.
-  Future<String> registerDevice(String deviceName) async {
-    var fingerprint = await _storage.getDeviceFingerprint();
-    if (fingerprint == null) {
-      fingerprint = _uuid.v4();
-      await _storage.saveDeviceFingerprint(fingerprint);
+  Future<String> _getOrCreateDeviceFingerprint() async {
+    final existing = await _storage.getDeviceFingerprint();
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
     }
+    final fingerprint = _uuid.v4();
+    await _storage.saveDeviceFingerprint(fingerprint);
+    return fingerprint;
+  }
 
+  Future<void> _redeemOfflineTokenOnline({
+    required String deviceFingerprint,
+    required String offlineToken,
+  }) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/register-device',
-      data: {'deviceName': deviceName, 'deviceFingerprint': fingerprint},
-    );
-
-    final offlineToken = response.data!['offlineToken'] as String;
-    await _storage.saveOfflineToken(offlineToken);
-    _logger.i('Device registered for offline access.');
-    return offlineToken;
-  }
-
-  Future<void> ensureTrustedDeviceRegistered([String? deviceName]) async {
-    final existingToken = await _storage.getOfflineToken();
-    if (existingToken != null) return;
-
-    final resolvedDeviceName = deviceName?.trim().isNotEmpty == true
-        ? deviceName!.trim()
-        : _defaultDeviceName();
-    await registerDevice(resolvedDeviceName);
-    notifyListeners();
-  }
-
-  Future<void> logout() async {
-    await _storage.clearAll();
-    _setUnauthenticated();
-  }
-
-  Future<void> _refreshOnline(String refreshToken) async {
-    final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/refresh',
-      data: {'refreshToken': refreshToken},
+      '/auth/offline-login',
+      data: {
+        'deviceFingerprint': deviceFingerprint,
+        'offlineToken': offlineToken,
+      },
     );
     final data = response.data!;
     final user = AuthUser.fromJson(data['user'] as Map<String, dynamic>);
@@ -204,6 +408,7 @@ class AuthService extends ChangeNotifier {
     await _storage.saveAccessToken(data['accessToken'] as String);
     await _storage.saveRefreshToken(data['refreshToken'] as String);
     await _storage.saveUserJson(jsonEncode(user.toJson()));
+    await _storage.saveTrustedUserJson(jsonEncode(user.toJson()));
 
     _dio.options.headers['Authorization'] = 'Bearer ${data['accessToken']}';
     _setAuthenticated(user, isOfflineSession: false);
@@ -282,6 +487,7 @@ class AuthService extends ChangeNotifier {
   AuthUser updateCurrentUserFromJson(Map<String, dynamic> json) {
     final user = AuthUser.fromJson(json);
     _storage.saveUserJson(jsonEncode(user.toJson()));
+    _storage.saveTrustedUserJson(jsonEncode(user.toJson()));
     _setAuthenticated(user, isOfflineSession: _isOfflineSession);
     return user;
   }
@@ -297,6 +503,10 @@ class AuthService extends ChangeNotifier {
   String _defaultDeviceName() {
     final host = Platform.localHostname.trim();
     return host.isEmpty ? 'Offline School Desktop' : host;
+  }
+
+  bool _canRegisterTrustedDevice(AuthUser user) {
+    return user.tenantId != null && user.schoolId != null;
   }
 
   Future<void> _refreshAccessTokenIfNeeded() async {
@@ -324,8 +534,7 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> _handleRefreshFailure() async {
-    await _storage.clearAccessToken();
-    await _storage.clearRefreshToken();
+    await _storage.clearSession();
     _dio.options.headers.remove('Authorization');
     _setUnauthenticated();
   }

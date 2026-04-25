@@ -20,6 +20,10 @@ npm run seed:roles
 npm run start:dev
 ```
 
+Run these commands from the `backend/` directory. From the repository root, use `npm --prefix backend ...`.
+
+`seed:roles` creates or refreshes the bootstrap admin user. The default login only works after the migrations have been applied to the same database.
+
 ## Health check
 
 ```

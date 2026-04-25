@@ -26,6 +26,10 @@ class SyncQueue extends Table {
   /// Stable key used on the backend to de-duplicate repeated pushes.
   TextColumn get idempotencyKey => text()();
 
+  /// Monotonic local logical clock for causal ordering on this device.
+  IntColumn get lamportClock =>
+      integer().named('lamport_clock').withDefault(const Constant(0))();
+
   /// Local timestamp of when the queue item was created.
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 

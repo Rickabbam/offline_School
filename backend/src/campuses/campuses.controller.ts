@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { CampusesService } from './campuses.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { requireSchoolScope } from '../auth/request-scope';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UserRole } from '../users/user-role.enum';
@@ -17,28 +18,44 @@ export class CampusesController {
   @Get()
   @Roles(UserRole.Admin, UserRole.SupportAdmin, UserRole.SupportTechnician)
   findAll(@Request() req: { user: User }) {
-    return this.svc.findAll(req.user.tenantId!, req.user.schoolId ?? undefined);
+    const scope = requireSchoolScope(req.user);
+    return this.svc.findAll(
+      scope.tenantId,
+      scope.schoolId,
+      req.user.role === UserRole.SupportTechnician ? scope.campusId : null,
+    );
   }
 
   @Get(':id')
   @Roles(UserRole.Admin, UserRole.SupportAdmin, UserRole.SupportTechnician)
   findOne(@Request() req: { user: User }, @Param('id') id: string) {
-    return this.svc.findById(req.user.tenantId!, id, req.user.schoolId ?? undefined);
+    const scope = requireSchoolScope(req.user);
+    return this.svc.findById(
+      scope.tenantId,
+      id,
+      scope.schoolId,
+      req.user.role === UserRole.SupportTechnician ? scope.campusId : null,
+    );
   }
 
   @Post()
   @Roles(UserRole.SupportAdmin)
-  create(@Body() body: Partial<Campus>) { return this.svc.create(body); }
+  create(@Request() req: { user: User }, @Body() body: Partial<Campus>) {
+    const scope = requireSchoolScope(req.user);
+    return this.svc.create(scope.tenantId, scope.schoolId, body);
+  }
 
   @Patch(':id')
   @Roles(UserRole.Admin, UserRole.SupportAdmin)
   update(@Request() req: { user: User }, @Param('id') id: string, @Body() body: Partial<Campus>) {
-    return this.svc.update(req.user.tenantId!, id, body, req.user.schoolId ?? undefined);
+    const scope = requireSchoolScope(req.user);
+    return this.svc.update(scope.tenantId, id, body, scope.schoolId);
   }
 
   @Delete(':id')
   @Roles(UserRole.SupportAdmin)
   remove(@Request() req: { user: User }, @Param('id') id: string) {
-    return this.svc.remove(req.user.tenantId!, id, req.user.schoolId ?? undefined);
+    const scope = requireSchoolScope(req.user);
+    return this.svc.remove(scope.tenantId, id, scope.schoolId);
   }
 }

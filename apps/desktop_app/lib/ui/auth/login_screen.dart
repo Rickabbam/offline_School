@@ -18,6 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordCtrl = TextEditingController();
 
   bool _loading = false;
+  bool _offlineLoading = false;
   bool _obscurePassword = true;
   String? _error;
 
@@ -51,9 +52,33 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _useTrustedDevice() async {
+    setState(() {
+      _offlineLoading = true;
+      _error = null;
+    });
+
+    try {
+      await context.read<AuthService>().loginWithTrustedDevice();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = '$e'
+              .replaceFirst('Bad state: ', '')
+              .replaceFirst('Exception: ', '');
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _offlineLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final auth = context.read<AuthService>();
 
     return Scaffold(
       backgroundColor: colorScheme.surfaceContainerHighest,
@@ -152,7 +177,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: double.infinity,
                       height: 48,
                       child: FilledButton(
-                        onPressed: _loading ? null : _submit,
+                        onPressed:
+                            _loading || _offlineLoading ? null : _submit,
                         child: _loading
                             ? const SizedBox(
                                 width: 20,
@@ -165,9 +191,37 @@ class _LoginScreenState extends State<LoginScreen> {
                             : const Text('Sign In'),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    FutureBuilder<bool>(
+                      future: auth.hasTrustedDeviceAccess(),
+                      builder: (context, snapshot) {
+                        final available = snapshot.data ?? false;
+                        if (!available) {
+                          return const SizedBox.shrink();
+                        }
+                        return SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: OutlinedButton(
+                            onPressed: _loading || _offlineLoading
+                                ? null
+                                : _useTrustedDevice,
+                            child: _offlineLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('Use Trusted Offline Access'),
+                          ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 16),
                     Text(
-                      'Offline access is available once this device is registered.',
+                      'Offline access is available once this device is registered. Logging out now ends the session without deleting device trust.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: colorScheme.outline,
                           ),

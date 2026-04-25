@@ -5,6 +5,7 @@ import {
   IsEmail,
   IsEnum,
   IsInt,
+  IsNumber,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -12,9 +13,10 @@ import {
   MaxLength,
   Min,
   ValidateNested,
-} from 'class-validator';
-import { Type } from 'class-transformer';
-import { SchoolType } from '../../schools/school.entity';
+  ValidateIf,
+} from "class-validator";
+import { Type } from "class-transformer";
+import { SchoolType } from "../../schools/school.entity";
 
 export class BootstrapTermDto {
   @IsString()
@@ -184,6 +186,120 @@ export class BootstrapGradingSchemeDto {
   bands: BootstrapGradingBandDto[];
 }
 
+export class BootstrapStaffRoleDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  role: string;
+
+  @IsBoolean()
+  enabled: boolean;
+
+  @IsInt()
+  @Min(0)
+  headcount: number;
+}
+
+export class BootstrapFeeCategoryDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  name: string;
+
+  @IsNumber()
+  @Min(0)
+  defaultAmount: number;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  billingTerm: string;
+}
+
+export class BootstrapReceiptFormatDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  headerLine1?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  headerLine2?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  footerNote?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  receiptPrefix: string;
+
+  @IsInt()
+  @Min(1)
+  nextReceiptNumber: number;
+}
+
+export class BootstrapNotificationSettingsDto {
+  @IsBoolean()
+  smsEnabled: boolean;
+
+  @IsBoolean()
+  paymentReceiptsEnabled: boolean;
+
+  @IsBoolean()
+  feeRemindersEnabled: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  senderId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  providerName?: string;
+}
+
+export class BootstrapOnboardingDefaultsDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BootstrapStaffRoleDto)
+  staffRoles: BootstrapStaffRoleDto[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BootstrapFeeCategoryDto)
+  feeCategories: BootstrapFeeCategoryDto[];
+
+  @ValidateNested()
+  @Type(() => BootstrapReceiptFormatDto)
+  receiptFormat: BootstrapReceiptFormatDto;
+
+  @ValidateNested()
+  @Type(() => BootstrapNotificationSettingsDto)
+  notifications: BootstrapNotificationSettingsDto;
+}
+
+export class BootstrapDeviceRegistrationDto {
+  @IsBoolean()
+  registerOfflineAccess: boolean;
+
+  @ValidateIf((value: BootstrapDeviceRegistrationDto) => value.registerOfflineAccess)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  deviceName: string;
+
+  @ValidateIf((value: BootstrapDeviceRegistrationDto) => value.registerOfflineAccess)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(512)
+  deviceFingerprint: string;
+}
+
 export class BootstrapSchoolSetupDto {
   @ValidateNested()
   @Type(() => BootstrapSchoolProfileDto)
@@ -210,4 +326,12 @@ export class BootstrapSchoolSetupDto {
   @ValidateNested()
   @Type(() => BootstrapGradingSchemeDto)
   gradingScheme: BootstrapGradingSchemeDto;
+
+  @ValidateNested()
+  @Type(() => BootstrapOnboardingDefaultsDto)
+  onboardingDefaults: BootstrapOnboardingDefaultsDto;
+
+  @ValidateNested()
+  @Type(() => BootstrapDeviceRegistrationDto)
+  deviceRegistration: BootstrapDeviceRegistrationDto;
 }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:desktop_app/auth/auth_service.dart';
+import 'package:desktop_app/database/app_database.dart';
+import 'package:desktop_app/sync/sync_service.dart';
 import 'package:desktop_app/ui/onboarding/onboarding_draft_storage.dart';
 import 'package:desktop_app/ui/onboarding/onboarding_models.dart';
 import 'package:desktop_app/ui/onboarding/onboarding_service.dart';
@@ -218,8 +220,11 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
 
   Future<void> _submitSetup() async {
     final auth = context.read<AuthService>();
-    final service = OnboardingService(auth);
+    final db = context.read<AppDatabase>();
+    final syncService = context.read<SyncService>();
+    final service = OnboardingService(auth, db);
     await service.bootstrapSchool(_draft);
+    await syncService.syncNow();
     final userId = auth.currentUser?.id;
     if (userId != null) {
       await _draftStorage.clear(userId);

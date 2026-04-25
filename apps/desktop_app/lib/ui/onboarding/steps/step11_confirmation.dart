@@ -79,9 +79,7 @@ class _Step11ConfirmationState extends State<Step11Confirmation> {
                       ? 'SMS notifications enabled'
                       : 'SMS notifications disabled',
                   widget.draft.deviceRegistration.registerOfflineAccess
-                      ? widget.draft.deviceRegistration.isRegistered
-                          ? 'Trusted device registered'
-                          : 'Trusted device still pending registration'
+                      ? 'Trusted device will be registered on setup completion'
                       : 'Trusted device registration skipped',
                 ],
               ),
@@ -97,7 +95,7 @@ class _Step11ConfirmationState extends State<Step11Confirmation> {
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(
-                    'This submission will persist school, campus, academic year, classes, subjects, and grading scheme now. Finance and notification defaults remain in the desktop setup draft until the corresponding backend modules are added.',
+                    'This submission will persist school, campus, academic year, classes, subjects, grading scheme, and trusted-device scope now. Fee categories and default fee structures are seeded into the local workspace and queued for sync, while receipt and notification defaults are stored with the school setup profile.',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ),

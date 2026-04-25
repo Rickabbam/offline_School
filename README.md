@@ -61,9 +61,14 @@ cd backend
 cp .env.example .env          # fill in your local PostgreSQL + Redis URLs
 npm install
 npm run migration:run         # run DB migrations
+npm run seed:roles            # create/update the bootstrap admin user
 npm run start:dev             # starts on http://localhost:3000
 # health check: curl http://localhost:3000/health
 ```
+
+If you stay at the repository root, use `npm --prefix backend ...` for these commands instead of `npm run ...`.
+
+If the default admin login does not work, confirm `migration:run` and `seed:roles` were both run against the same database that `start:dev` uses.
 
 **Requires:** PostgreSQL running on port 5432, Redis running on port 6379.
 Use `docker compose up -d` from the `infra/` folder for local services.

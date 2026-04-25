@@ -13,14 +13,44 @@ class Staff extends Table {
   TextColumn get gender => text().nullable()();
   TextColumn get phone => text().nullable()();
   TextColumn get email => text().nullable()();
-  TextColumn get systemRole => text().named('system_role').withDefault(const Constant('teacher'))();
-  TextColumn get employmentType => text().named('employment_type').withDefault(const Constant('permanent'))();
+  TextColumn get department => text().nullable()();
+  TextColumn get systemRole =>
+      text().named('system_role').withDefault(const Constant('teacher'))();
+  TextColumn get employmentType => text()
+      .named('employment_type')
+      .withDefault(const Constant('permanent'))();
   TextColumn get dateJoined => text().named('date_joined').nullable()();
-  BoolColumn get isActive => boolean().named('is_active').withDefault(const Constant(true))();
-  TextColumn get syncStatus => text().named('sync_status').withDefault(const Constant('local'))();
+  BoolColumn get isActive =>
+      boolean().named('is_active').withDefault(const Constant(true))();
+  IntColumn get serverRevision =>
+      integer().named('server_revision').withDefault(const Constant(0))();
+  TextColumn get syncStatus =>
+      text().named('sync_status').withDefault(const Constant('local'))();
   BoolColumn get deleted => boolean().withDefault(const Constant(false))();
-  DateTimeColumn get createdAt => dateTime().named('created_at').withDefault(currentDateAndTime)();
-  DateTimeColumn get updatedAt => dateTime().named('updated_at').withDefault(currentDateAndTime)();
+  DateTimeColumn get createdAt =>
+      dateTime().named('created_at').withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt =>
+      dateTime().named('updated_at').withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class StaffTeachingAssignments extends Table {
+  TextColumn get id => text()();
+  TextColumn get tenantId => text().named('tenant_id')();
+  TextColumn get schoolId => text().named('school_id')();
+  TextColumn get staffId => text().named('staff_id')();
+  TextColumn get assignmentType => text().named('assignment_type')();
+  TextColumn get subjectId => text().named('subject_id').nullable()();
+  TextColumn get classArmId => text().named('class_arm_id').nullable()();
+  IntColumn get serverRevision =>
+      integer().named('server_revision').withDefault(const Constant(0))();
+  BoolColumn get deleted => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt =>
+      dateTime().named('created_at').withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt =>
+      dateTime().named('updated_at').withDefault(currentDateAndTime)();
 
   @override
   Set<Column> get primaryKey => {id};

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../auth/role_access.dart';
+import 'package:desktop_app/auth/role_access.dart';
 
 /// Vertical navigation sidebar shown on the left of the app shell.
 class Sidebar extends StatelessWidget {
@@ -53,14 +53,14 @@ class Sidebar extends StatelessWidget {
                     item.icon,
                     color: selected
                         ? colorScheme.onPrimary
-                        : colorScheme.onPrimary.withOpacity(0.6),
+                        : colorScheme.onPrimary.withValues(alpha: 0.6),
                   ),
                   title: Text(
                     item.label,
                     style: TextStyle(
                       color: selected
                           ? colorScheme.onPrimary
-                          : colorScheme.onPrimary.withOpacity(0.6),
+                          : colorScheme.onPrimary.withValues(alpha: 0.6),
                       fontWeight:
                           selected ? FontWeight.bold : FontWeight.normal,
                     ),

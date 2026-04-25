@@ -1,0 +1,500 @@
+import 'dart:convert';
+
+import 'package:desktop_app/auth/auth_service.dart';
+import 'package:desktop_app/database/app_database.dart';
+import 'package:desktop_app/ui/finance/finance_service.dart';
+import 'package:dio/dio.dart';
+import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+class _OfflineFinanceAuthService extends AuthService {
+  _OfflineFinanceAuthService() : super(backendBaseUrl: 'http://localhost:3000');
+
+  @override
+  AuthUser? get currentUser => const AuthUser(
+        id: 'user-1',
+        email: 'cashier@example.com',
+        fullName: 'Cashier User',
+        role: 'cashier',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        campusId: 'campus-1',
+      );
+
+  @override
+  bool get isOfflineSession => true;
+
+  @override
+  Dio createAuthenticatedClient() {
+    throw StateError('Offline finance test must not use the network.');
+  }
+}
+
+void main() {
+  late AppDatabase db;
+  late FinanceService service;
+
+  setUp(() async {
+    db = AppDatabase.forTesting(NativeDatabase.memory());
+    await db.runMigrations();
+    service = FinanceService(_OfflineFinanceAuthService(), db);
+
+    await db.upsertClassLevel(
+      ClassLevelsCacheCompanion.insert(
+        id: 'class-level-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        name: 'Basic 1',
+        sortOrder: const Value(1),
+      ),
+    );
+    await db.upsertAcademicYear(
+      AcademicYearsCacheCompanion.insert(
+        id: 'year-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        label: '2026/2027',
+        startDate: '2026-09-01',
+        endDate: '2027-07-31',
+      ),
+    );
+    await db.upsertTerm(
+      TermsCacheCompanion.insert(
+        id: 'term-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        academicYearId: 'year-1',
+        name: 'Term 1',
+        termNumber: 1,
+        startDate: '2026-09-01',
+        endDate: '2026-12-18',
+      ),
+    );
+  });
+
+  tearDown(() async {
+    await db.close();
+  });
+
+  test(
+      'queues offline fee category and variation creation with school-scoped payload',
+      () async {
+    final category = await service.createFeeCategory(
+      name: 'Tuition',
+      billingTerm: 'per_term',
+      isActive: true,
+    );
+    await service.createFeeStructureItem(
+      feeCategoryId: '${category['id']}',
+      classLevelId: 'class-level-1',
+      termId: 'term-1',
+      amount: 450,
+      notes: 'Main term fee',
+    );
+
+    final categories = await db.select(db.feeCategories).get();
+    final items = await db.select(db.feeStructureItems).get();
+    final queueItems = await db.select(db.syncQueue).get();
+
+    expect(categories, hasLength(1));
+    expect(items, hasLength(1));
+    expect(queueItems, hasLength(2));
+
+    final categoryPayload =
+        jsonDecode(queueItems.first.payloadJson) as Map<String, dynamic>;
+    final itemPayload =
+        jsonDecode(queueItems.last.payloadJson) as Map<String, dynamic>;
+
+    expect(queueItems.first.entityType, 'fee_category');
+    expect(queueItems.last.entityType, 'fee_structure_item');
+    expect(categoryPayload['tenantId'], 'tenant-1');
+    expect(categoryPayload['schoolId'], 'school-1');
+    expect(itemPayload['feeCategoryId'], category['id']);
+    expect(itemPayload['classLevelId'], 'class-level-1');
+    expect(itemPayload['termId'], 'term-1');
+    expect(itemPayload['amount'], 450.0);
+  });
+
+  test('generates draft invoices offline and advances through confirm and post',
+      () async {
+    final category = await service.createFeeCategory(
+      name: 'Tuition',
+      billingTerm: 'per_term',
+      isActive: true,
+    );
+    await service.createFeeStructureItem(
+      feeCategoryId: '${category['id']}',
+      classLevelId: 'class-level-1',
+      termId: 'term-1',
+      amount: 450,
+      notes: 'Main term fee',
+    );
+
+    await db.upsertStudent(
+      StudentsCompanion.insert(
+        id: 'student-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        campusId: const Value('campus-1'),
+        firstName: 'Ama',
+        lastName: 'Mensah',
+        status: const Value('active'),
+        syncStatus: const Value('local'),
+      ),
+    );
+    await db.upsertClassArm(
+      ClassArmsCacheCompanion.insert(
+        id: 'arm-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        classLevelId: 'class-level-1',
+        arm: 'A',
+        displayName: 'Basic 1A',
+      ),
+    );
+    await db.upsertEnrollment(
+      EnrollmentsCompanion.insert(
+        id: 'enrollment-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        studentId: 'student-1',
+        classArmId: 'arm-1',
+        academicYearId: 'year-1',
+        enrollmentDate: '2026-09-02',
+      ),
+    );
+
+    final result = await service.generateInvoices(termId: 'term-1');
+    expect(result['created'], 1);
+
+    final invoices = await db.select(db.invoices).get();
+    expect(invoices, hasLength(1));
+    expect(invoices.single.status, 'draft');
+    expect(invoices.single.totalAmount, 450);
+
+    await service.transitionInvoiceStatus(
+      invoiceId: invoices.single.id,
+      targetStatus: 'confirmed',
+    );
+    await service.transitionInvoiceStatus(
+      invoiceId: invoices.single.id,
+      targetStatus: 'posted',
+    );
+
+    final updated = await db.select(db.invoices).getSingle();
+    expect(updated.status, 'posted');
+    expect(updated.postedAt != null, isTrue);
+
+    final invoiceQueueItems = await (db.select(db.syncQueue)
+          ..where((row) => row.entityType.equals('invoice')))
+        .get();
+    expect(invoiceQueueItems, hasLength(1));
+    final payload = jsonDecode(invoiceQueueItems.single.payloadJson)
+        as Map<String, dynamic>;
+    expect(payload['status'], 'posted');
+    expect(payload['studentId'], 'student-1');
+  });
+
+  test('rejects duplicate fee variation rules for the same category scope',
+      () async {
+    final category = await service.createFeeCategory(
+      name: 'Tuition',
+      billingTerm: 'per_term',
+      isActive: true,
+    );
+
+    await service.createFeeStructureItem(
+      feeCategoryId: '${category['id']}',
+      classLevelId: 'class-level-1',
+      termId: 'term-1',
+      amount: 450,
+      notes: 'Main term fee',
+    );
+
+    await expectLater(
+      () => service.createFeeStructureItem(
+        feeCategoryId: '${category['id']}',
+        classLevelId: 'class-level-1',
+        termId: 'term-1',
+        amount: 500,
+        notes: 'Conflicting duplicate',
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('already exists'),
+        ),
+      ),
+    );
+
+    final items = await db.select(db.feeStructureItems).get();
+    final queueItems = await db.select(db.syncQueue).get();
+    expect(items, hasLength(1));
+    expect(queueItems.where((row) => row.entityType == 'fee_structure_item'),
+        hasLength(1));
+  });
+
+  test('does not rebill one-time fee categories in later term invoices',
+      () async {
+    await db.upsertTerm(
+      TermsCacheCompanion.insert(
+        id: 'term-2',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        academicYearId: 'year-1',
+        name: 'Term 2',
+        termNumber: 2,
+        startDate: '2027-01-10',
+        endDate: '2027-04-09',
+      ),
+    );
+
+    final tuition = await service.createFeeCategory(
+      name: 'Tuition',
+      billingTerm: 'per_term',
+      isActive: true,
+    );
+    final admission = await service.createFeeCategory(
+      name: 'Admission',
+      billingTerm: 'one_time',
+      isActive: true,
+    );
+    await service.createFeeStructureItem(
+      feeCategoryId: '${tuition['id']}',
+      classLevelId: 'class-level-1',
+      amount: 450,
+      notes: 'Tuition charge',
+    );
+    await service.createFeeStructureItem(
+      feeCategoryId: '${admission['id']}',
+      classLevelId: 'class-level-1',
+      amount: 100,
+      notes: 'One-time admission fee',
+    );
+
+    await db.upsertStudent(
+      StudentsCompanion.insert(
+        id: 'student-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        campusId: const Value('campus-1'),
+        firstName: 'Ama',
+        lastName: 'Mensah',
+        status: const Value('active'),
+        syncStatus: const Value('local'),
+      ),
+    );
+    await db.upsertClassArm(
+      ClassArmsCacheCompanion.insert(
+        id: 'arm-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        classLevelId: 'class-level-1',
+        arm: 'A',
+        displayName: 'Basic 1A',
+      ),
+    );
+    await db.upsertEnrollment(
+      EnrollmentsCompanion.insert(
+        id: 'enrollment-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        studentId: 'student-1',
+        classArmId: 'arm-1',
+        academicYearId: 'year-1',
+        enrollmentDate: '2026-09-02',
+      ),
+    );
+
+    await service.generateInvoices(termId: 'term-1');
+    await service.generateInvoices(termId: 'term-2');
+
+    final invoices = await db.getInvoices(
+      scope: const LocalDataScope(
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        campusId: 'campus-1',
+      ),
+    );
+    expect(invoices, hasLength(2));
+
+    final term1Lines = (jsonDecode(
+      invoices
+          .singleWhere((invoice) => invoice.termId == 'term-1')
+          .lineItemsJson,
+    ) as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+    final term2Lines = (jsonDecode(
+      invoices
+          .singleWhere((invoice) => invoice.termId == 'term-2')
+          .lineItemsJson,
+    ) as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+
+    expect(term1Lines.map((line) => line['description']),
+        containsAll(['Tuition', 'Admission']));
+    expect(term2Lines.map((line) => line['description']), contains('Tuition'));
+    expect(term2Lines.map((line) => line['description']),
+        isNot(contains('Admission')));
+    expect(
+      invoices.singleWhere((invoice) => invoice.termId == 'term-1').totalAmount,
+      550,
+    );
+    expect(
+      invoices.singleWhere((invoice) => invoice.termId == 'term-2').totalAmount,
+      450,
+    );
+  });
+
+  test(
+      'records offline payments, blocks overpayment, and uses reversal entries',
+      () async {
+    final category = await service.createFeeCategory(
+      name: 'Tuition',
+      billingTerm: 'per_term',
+      isActive: true,
+    );
+    await service.createFeeStructureItem(
+      feeCategoryId: '${category['id']}',
+      classLevelId: 'class-level-1',
+      termId: 'term-1',
+      amount: 450,
+      notes: 'Main term fee',
+    );
+
+    await db.upsertStudent(
+      StudentsCompanion.insert(
+        id: 'student-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        campusId: const Value('campus-1'),
+        firstName: 'Ama',
+        lastName: 'Mensah',
+        status: const Value('active'),
+        syncStatus: const Value('local'),
+      ),
+    );
+    await db.upsertClassArm(
+      ClassArmsCacheCompanion.insert(
+        id: 'arm-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        classLevelId: 'class-level-1',
+        arm: 'A',
+        displayName: 'Basic 1A',
+      ),
+    );
+    await db.upsertEnrollment(
+      EnrollmentsCompanion.insert(
+        id: 'enrollment-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        studentId: 'student-1',
+        classArmId: 'arm-1',
+        academicYearId: 'year-1',
+        enrollmentDate: '2026-09-02',
+      ),
+    );
+
+    await service.generateInvoices(termId: 'term-1');
+    final invoice = (await db.select(db.invoices).get()).single;
+    await service.transitionInvoiceStatus(
+      invoiceId: invoice.id,
+      targetStatus: 'confirmed',
+    );
+    await service.transitionInvoiceStatus(
+      invoiceId: invoice.id,
+      targetStatus: 'posted',
+    );
+
+    final created = await service.createPayment(
+      invoiceId: invoice.id,
+      amount: 300,
+      paymentMode: 'cash',
+      paymentDate: '2026-09-03',
+      reference: '',
+      notes: 'First tranche',
+    );
+    await service.transitionPaymentStatus(
+      paymentId: '${created['id']}',
+      targetStatus: 'confirmed',
+    );
+    await service.transitionPaymentStatus(
+      paymentId: '${created['id']}',
+      targetStatus: 'posted',
+    );
+
+    await expectLater(
+      () => service.createPayment(
+        invoiceId: invoice.id,
+        amount: 200,
+        paymentMode: 'bank',
+        paymentDate: '2026-09-04',
+        reference: 'BANK-1',
+        notes: '',
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('outstanding'),
+        ),
+      ),
+    );
+
+    final payment = (await db.getPayments(
+      scope: const LocalDataScope(
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        campusId: 'campus-1',
+      ),
+    ))
+        .single;
+    expect(payment.status, 'posted');
+
+    final reversal = await service.createPaymentReversal(
+      paymentId: payment.id,
+      reason: 'Entered against wrong family account',
+    );
+    expect(reversal['paymentId'], payment.id);
+
+    final reversals = await db.getPaymentReversals(
+      scope: const LocalDataScope(
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        campusId: 'campus-1',
+      ),
+    );
+    expect(reversals, hasLength(1));
+
+    await expectLater(
+      () => service.createPaymentReversal(
+        paymentId: payment.id,
+        reason: 'Duplicate reversal should fail',
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('already exists'),
+        ),
+      ),
+    );
+
+    final paymentQueueItems = await (db.select(db.syncQueue)
+          ..where((row) => row.entityType.equals('payment')))
+        .get();
+    final reversalQueueItems = await (db.select(db.syncQueue)
+          ..where((row) => row.entityType.equals('payment_reversal')))
+        .get();
+    expect(paymentQueueItems, hasLength(1));
+    expect(reversalQueueItems, hasLength(1));
+
+    final paymentPayload = jsonDecode(paymentQueueItems.single.payloadJson)
+        as Map<String, dynamic>;
+    expect(paymentPayload['status'], 'posted');
+    expect(paymentPayload['amount'], 300.0);
+  });
+}
