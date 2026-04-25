@@ -332,10 +332,14 @@ void main() {
           ..where((row) => row.id.equals('term-1')))
         .getSingle();
     final conflicts = await db.getOpenSyncConflicts(limit: 10);
+    final schoolRevision = await db.getLastRevision('school');
+    final campusRevision = await db.getLastRevision('campus');
 
     expect(term.name, 'Offline Term Name');
     expect(workspace.tenant['name'], 'Pilot Tenant');
     expect(workspace.terms.single['name'], 'Offline Term Name');
+    expect(schoolRevision, 8);
+    expect(campusRevision, 9);
     expect(conflicts.single.entityType, 'term');
     expect(conflicts.single.entityId, 'term-1');
     expect(conflicts.single.conflictType, 'pull_deferred');

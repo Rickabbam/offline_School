@@ -212,6 +212,9 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
     if (confirmed != true) {
       return;
     }
+    if (!mounted) {
+      return;
+    }
 
     final user = context.read<AuthService>().currentUser;
     if (user?.tenantId == null || user?.schoolId == null) {
@@ -531,5 +534,4 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
       ),
     );
   }
-
 }

@@ -1,8 +1,13 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:desktop_app/auth/auth_service.dart';
 import 'package:desktop_app/database/app_database.dart';
 import 'package:drift/drift.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:uuid/uuid.dart';
 
 class FeeStructuresWorkspaceData {
@@ -51,6 +56,114 @@ class PaymentWorkspaceData {
   final List<Student> students;
   final List<ClassArmsCacheData> classArms;
   final List<TermsCacheData> terms;
+}
+
+class FinanceReportWorkspaceData {
+  const FinanceReportWorkspaceData({
+    required this.arrears,
+    required this.dailyCollections,
+    required this.classSummaries,
+    required this.totalPostedInvoices,
+    required this.totalCollected,
+    required this.totalReversed,
+    required this.totalOutstanding,
+  });
+
+  final List<ArrearsReportRow> arrears;
+  final List<DailyCollectionReportRow> dailyCollections;
+  final List<ClassFeeSummaryRow> classSummaries;
+  final double totalPostedInvoices;
+  final double totalCollected;
+  final double totalReversed;
+  final double totalOutstanding;
+}
+
+class PaymentReceiptData {
+  const PaymentReceiptData({
+    required this.payment,
+    required this.invoice,
+    required this.schoolName,
+    required this.campusName,
+    required this.studentName,
+    required this.className,
+    required this.termName,
+    required this.receiptNumber,
+    required this.amountPaid,
+    required this.invoiceTotal,
+    required this.totalPaidAfterReceipt,
+    required this.outstandingAfterReceipt,
+  });
+
+  final Payment payment;
+  final Invoice invoice;
+  final String schoolName;
+  final String campusName;
+  final String studentName;
+  final String className;
+  final String termName;
+  final String receiptNumber;
+  final double amountPaid;
+  final double invoiceTotal;
+  final double totalPaidAfterReceipt;
+  final double outstandingAfterReceipt;
+}
+
+class ArrearsReportRow {
+  const ArrearsReportRow({
+    required this.invoiceId,
+    required this.invoiceCode,
+    required this.studentName,
+    required this.className,
+    required this.termName,
+    required this.invoiceTotal,
+    required this.paidAmount,
+    required this.outstandingAmount,
+  });
+
+  final String invoiceId;
+  final String invoiceCode;
+  final String studentName;
+  final String className;
+  final String termName;
+  final double invoiceTotal;
+  final double paidAmount;
+  final double outstandingAmount;
+}
+
+class DailyCollectionReportRow {
+  const DailyCollectionReportRow({
+    required this.paymentDate,
+    required this.paymentMode,
+    required this.paymentCount,
+    required this.totalAmount,
+  });
+
+  final String paymentDate;
+  final String paymentMode;
+  final int paymentCount;
+  final double totalAmount;
+}
+
+class ClassFeeSummaryRow {
+  const ClassFeeSummaryRow({
+    required this.classArmId,
+    required this.className,
+    required this.termId,
+    required this.termName,
+    required this.invoiceCount,
+    required this.billedAmount,
+    required this.collectedAmount,
+    required this.outstandingAmount,
+  });
+
+  final String classArmId;
+  final String className;
+  final String termId;
+  final String termName;
+  final int invoiceCount;
+  final double billedAmount;
+  final double collectedAmount;
+  final double outstandingAmount;
 }
 
 class FinanceService {
@@ -119,6 +232,323 @@ class FinanceService {
       students: students,
       classArms: classArms,
       terms: terms,
+    );
+  }
+
+  Future<PaymentReceiptData> loadPostedPaymentReceipt(String paymentId) async {
+    final scope = _scope;
+    final payment =
+        await _db.findPaymentById(scope: scope, paymentId: paymentId);
+    if (payment == null || payment.deleted) {
+      throw StateError('Payment not found in the active local scope.');
+    }
+    if (payment.status != 'posted') {
+      throw StateError('Receipts can only be generated for posted payments.');
+    }
+
+    final reversal = await _db.findPaymentReversalByPaymentId(
+      scope: scope,
+      paymentId: payment.id,
+    );
+    if (reversal != null) {
+      throw StateError('Reversed payments cannot produce active receipts.');
+    }
+
+    final invoice =
+        await _db.findInvoiceById(scope: scope, invoiceId: payment.invoiceId);
+    if (invoice == null || invoice.deleted || invoice.status != 'posted') {
+      throw StateError('Receipt invoice was not found as a posted record.');
+    }
+
+    final student =
+        await _db.findStudentById(scope: scope, studentId: invoice.studentId);
+    final classArm = await _db.findClassArmById(
+      scope: scope,
+      classArmId: invoice.classArmId,
+    );
+    final term = await _db.findTermById(scope: scope, termId: invoice.termId);
+    final school = await _db.getSchoolProfile(
+      tenantId: scope.tenantId,
+      schoolId: scope.schoolId,
+    );
+    final campus = await _db.getCampusProfile(scope: scope);
+    final payments = await _db.getPayments(scope: scope, invoiceId: invoice.id);
+    final reversals =
+        await _db.getPaymentReversals(scope: scope, invoiceId: invoice.id);
+    final reversedPaymentIds = reversals.map((row) => row.paymentId).toSet();
+    final totalPaidAfterReceipt = payments
+        .where((row) =>
+            row.status == 'posted' && !reversedPaymentIds.contains(row.id))
+        .fold<double>(0, (sum, row) => sum + row.amount);
+
+    return PaymentReceiptData(
+      payment: payment,
+      invoice: invoice,
+      schoolName: school?.name ?? scope.schoolId,
+      campusName: campus?.name ?? scope.campusId ?? 'Campus',
+      studentName: student == null
+          ? invoice.studentId
+          : '${student.firstName} ${student.lastName}',
+      className: classArm?.displayName ?? invoice.classArmId,
+      termName: term?.name ?? invoice.termId,
+      receiptNumber: 'RCT-${payment.paymentCode}',
+      amountPaid: payment.amount,
+      invoiceTotal: invoice.totalAmount,
+      totalPaidAfterReceipt: totalPaidAfterReceipt,
+      outstandingAfterReceipt: invoice.totalAmount - totalPaidAfterReceipt,
+    );
+  }
+
+  Future<Uint8List> buildPostedPaymentReceiptPdf(String paymentId) async {
+    final receipt = await loadPostedPaymentReceipt(paymentId);
+    final document = pw.Document();
+    final issuedAt = DateTime.now();
+
+    document.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a5,
+        margin: const pw.EdgeInsets.all(24),
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              receipt.schoolName,
+              style: pw.TextStyle(
+                fontSize: 18,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(receipt.campusName),
+            pw.SizedBox(height: 18),
+            pw.Text(
+              'Payment Receipt',
+              style: pw.TextStyle(
+                fontSize: 16,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            pw.Divider(),
+            _receiptLine('Receipt', receipt.receiptNumber),
+            _receiptLine('Payment', receipt.payment.paymentCode),
+            _receiptLine('Invoice', receipt.invoice.invoiceCode),
+            _receiptLine('Student', receipt.studentName),
+            _receiptLine('Class', receipt.className),
+            _receiptLine('Term', receipt.termName),
+            _receiptLine('Payment date', receipt.payment.paymentDate),
+            _receiptLine(
+              'Mode',
+              _paymentModeLabel(receipt.payment.paymentMode),
+            ),
+            if (receipt.payment.reference != null)
+              _receiptLine('Reference', receipt.payment.reference!),
+            pw.SizedBox(height: 14),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey500),
+              ),
+              child: pw.Column(
+                children: [
+                  _receiptAmountLine('Amount paid', receipt.amountPaid),
+                  _receiptAmountLine('Invoice total', receipt.invoiceTotal),
+                  _receiptAmountLine(
+                    'Total paid',
+                    receipt.totalPaidAfterReceipt,
+                  ),
+                  _receiptAmountLine(
+                    'Outstanding',
+                    receipt.outstandingAfterReceipt,
+                  ),
+                ],
+              ),
+            ),
+            pw.Spacer(),
+            pw.Text(
+              'Issued ${issuedAt.toIso8601String()} by ${_user.fullName}',
+              style: const pw.TextStyle(fontSize: 9),
+            ),
+            pw.Text(
+              'Posted records are immutable. Corrections require reversal entries.',
+              style: const pw.TextStyle(fontSize: 9),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return document.save();
+  }
+
+  Future<File> exportPostedPaymentReceiptPdf({
+    required String paymentId,
+    String? outputDirectoryPath,
+  }) async {
+    final receipt = await loadPostedPaymentReceipt(paymentId);
+    final bytes = await buildPostedPaymentReceiptPdf(paymentId);
+    final outputDirectory = outputDirectoryPath == null
+        ? Directory(
+            p.join(
+              (await getApplicationDocumentsDirectory()).path,
+              'offline_school_receipts',
+            ),
+          )
+        : Directory(outputDirectoryPath);
+    if (!await outputDirectory.exists()) {
+      await outputDirectory.create(recursive: true);
+    }
+    final file = File(
+      p.join(
+        outputDirectory.path,
+        '${_safeFileToken(receipt.receiptNumber)}.pdf',
+      ),
+    );
+    return file.writeAsBytes(bytes, flush: true);
+  }
+
+  Future<FinanceReportWorkspaceData> loadReportWorkspace({
+    String? termId,
+    String? paymentDate,
+  }) async {
+    final scope = _scope;
+    final invoices = (await _db.getInvoices(scope: scope, termId: termId))
+        .where((invoice) => invoice.status == 'posted')
+        .toList(growable: false);
+    final payments = await _db.getPayments(scope: scope);
+    final reversals = await _db.getPaymentReversals(scope: scope);
+    final students = await _db.getStudents(scope: scope);
+    final classArms = await _db.getClassArms(scope: scope);
+    final terms = await _db.getTerms(scope: scope);
+
+    final invoicesById = {for (final invoice in invoices) invoice.id: invoice};
+    final studentsById = {for (final student in students) student.id: student};
+    final classArmsById = {for (final arm in classArms) arm.id: arm};
+    final termsById = {for (final term in terms) term.id: term};
+    final reversedPaymentIds = reversals.map((row) => row.paymentId).toSet();
+    final activePostedPayments = payments
+        .where((payment) =>
+            payment.status == 'posted' &&
+            invoicesById.containsKey(payment.invoiceId) &&
+            !reversedPaymentIds.contains(payment.id))
+        .toList(growable: false);
+
+    final collectedByInvoiceId = <String, double>{};
+    for (final payment in activePostedPayments) {
+      collectedByInvoiceId.update(
+        payment.invoiceId,
+        (value) => value + payment.amount,
+        ifAbsent: () => payment.amount,
+      );
+    }
+
+    final arrears = <ArrearsReportRow>[];
+    final classSummaryIndex = <String, _MutableClassSummary>{};
+    var totalPostedInvoices = 0.0;
+    var totalCollected = 0.0;
+    for (final invoice in invoices) {
+      final paidAmount = collectedByInvoiceId[invoice.id] ?? 0;
+      final outstanding = invoice.totalAmount - paidAmount;
+      totalPostedInvoices += invoice.totalAmount;
+      totalCollected += paidAmount;
+
+      final student = studentsById[invoice.studentId];
+      final classArm = classArmsById[invoice.classArmId];
+      final term = termsById[invoice.termId];
+      final studentName = student == null
+          ? invoice.studentId
+          : '${student.firstName} ${student.lastName}';
+      final className = classArm?.displayName ?? invoice.classArmId;
+      final termName = term?.name ?? invoice.termId;
+
+      if (outstanding > 0.0001) {
+        arrears.add(
+          ArrearsReportRow(
+            invoiceId: invoice.id,
+            invoiceCode: invoice.invoiceCode,
+            studentName: studentName,
+            className: className,
+            termName: termName,
+            invoiceTotal: invoice.totalAmount,
+            paidAmount: paidAmount,
+            outstandingAmount: outstanding,
+          ),
+        );
+      }
+
+      final summaryKey = '${invoice.classArmId}|${invoice.termId}';
+      final summary = classSummaryIndex.putIfAbsent(
+        summaryKey,
+        () => _MutableClassSummary(
+          classArmId: invoice.classArmId,
+          className: className,
+          termId: invoice.termId,
+          termName: termName,
+        ),
+      );
+      summary.invoiceCount += 1;
+      summary.billedAmount += invoice.totalAmount;
+      summary.collectedAmount += paidAmount;
+      summary.outstandingAmount += outstanding > 0 ? outstanding : 0;
+    }
+
+    final dailyIndex = <String, _MutableDailyCollection>{};
+    for (final payment in activePostedPayments) {
+      if (paymentDate != null &&
+          paymentDate.isNotEmpty &&
+          payment.paymentDate != paymentDate) {
+        continue;
+      }
+      final key = '${payment.paymentDate}|${payment.paymentMode}';
+      final row = dailyIndex.putIfAbsent(
+        key,
+        () => _MutableDailyCollection(
+          paymentDate: payment.paymentDate,
+          paymentMode: payment.paymentMode,
+        ),
+      );
+      row.paymentCount += 1;
+      row.totalAmount += payment.amount;
+    }
+
+    final totalReversed = reversals
+        .where((reversal) => invoicesById.containsKey(reversal.invoiceId))
+        .fold<double>(0, (sum, reversal) => sum + reversal.amount);
+    final classSummaries = classSummaryIndex.values
+        .map((row) => row.toImmutable())
+        .toList(growable: false)
+      ..sort((a, b) {
+        final termCompare = a.termName.compareTo(b.termName);
+        return termCompare != 0
+            ? termCompare
+            : a.className.compareTo(b.className);
+      });
+    final dailyCollections = dailyIndex.values
+        .map((row) => row.toImmutable())
+        .toList(growable: false)
+      ..sort((a, b) {
+        final dateCompare = b.paymentDate.compareTo(a.paymentDate);
+        return dateCompare != 0
+            ? dateCompare
+            : a.paymentMode.compareTo(b.paymentMode);
+      });
+
+    arrears.sort((a, b) {
+      final termCompare = a.termName.compareTo(b.termName);
+      if (termCompare != 0) return termCompare;
+      final classCompare = a.className.compareTo(b.className);
+      return classCompare != 0
+          ? classCompare
+          : a.studentName.compareTo(b.studentName);
+    });
+
+    return FinanceReportWorkspaceData(
+      arrears: arrears,
+      dailyCollections: dailyCollections,
+      classSummaries: classSummaries,
+      totalPostedInvoices: totalPostedInvoices,
+      totalCollected: totalCollected,
+      totalReversed: totalReversed,
+      totalOutstanding: totalPostedInvoices - totalCollected,
     );
   }
 
@@ -1061,9 +1491,107 @@ class FinanceService {
   }
 }
 
+pw.Widget _receiptLine(String label, String value) {
+  return pw.Padding(
+    padding: const pw.EdgeInsets.only(bottom: 5),
+    child: pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.SizedBox(
+          width: 90,
+          child: pw.Text(
+            label,
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          ),
+        ),
+        pw.Expanded(child: pw.Text(value)),
+      ],
+    ),
+  );
+}
+
+pw.Widget _receiptAmountLine(String label, double value) {
+  return pw.Padding(
+    padding: const pw.EdgeInsets.only(bottom: 6),
+    child: pw.Row(
+      children: [
+        pw.Expanded(child: pw.Text(label)),
+        pw.Text(value.toStringAsFixed(2)),
+      ],
+    ),
+  );
+}
+
+String _safeFileToken(String value) {
+  return value.replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_');
+}
+
+String _paymentModeLabel(String mode) {
+  switch (mode) {
+    case 'cash':
+      return 'Cash';
+    case 'mtn_momo':
+      return 'MTN MoMo';
+    case 'telecel_cash':
+      return 'Telecel Cash';
+    case 'bank':
+      return 'Bank';
+    default:
+      return mode;
+  }
+}
+
 const List<String> _paymentModes = [
   'cash',
   'mtn_momo',
   'telecel_cash',
   'bank',
 ];
+
+class _MutableDailyCollection {
+  _MutableDailyCollection({
+    required this.paymentDate,
+    required this.paymentMode,
+  });
+
+  final String paymentDate;
+  final String paymentMode;
+  int paymentCount = 0;
+  double totalAmount = 0;
+
+  DailyCollectionReportRow toImmutable() => DailyCollectionReportRow(
+        paymentDate: paymentDate,
+        paymentMode: paymentMode,
+        paymentCount: paymentCount,
+        totalAmount: totalAmount,
+      );
+}
+
+class _MutableClassSummary {
+  _MutableClassSummary({
+    required this.classArmId,
+    required this.className,
+    required this.termId,
+    required this.termName,
+  });
+
+  final String classArmId;
+  final String className;
+  final String termId;
+  final String termName;
+  int invoiceCount = 0;
+  double billedAmount = 0;
+  double collectedAmount = 0;
+  double outstandingAmount = 0;
+
+  ClassFeeSummaryRow toImmutable() => ClassFeeSummaryRow(
+        classArmId: classArmId,
+        className: className,
+        termId: termId,
+        termName: termName,
+        invoiceCount: invoiceCount,
+        billedAmount: billedAmount,
+        collectedAmount: collectedAmount,
+        outstandingAmount: outstandingAmount,
+      );
+}

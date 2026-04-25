@@ -1256,6 +1256,7 @@ class SettingsService {
   }
 
   Future<void> _persistRemoteSchool(Map<String, dynamic> school) async {
+    final serverRevision = (school['serverRevision'] as num?)?.toInt() ?? 0;
     await _db.upsertSchoolProfile(
       SchoolProfileCacheCompanion(
         id: Value('${school['id']}'),
@@ -1270,15 +1271,19 @@ class SettingsService {
         contactEmail: Value(school['contactEmail'] as String?),
         onboardingDefaultsJson:
             Value(jsonEncode(school['onboardingDefaults'] ?? const {})),
-        serverRevision: Value(school['serverRevision'] as int? ?? 0),
+        serverRevision: Value(serverRevision),
         deleted: Value(school['deleted'] as bool? ?? false),
         createdAt: Value(DateTime.parse('${school['createdAt']}')),
         updatedAt: Value(DateTime.parse('${school['updatedAt']}')),
       ),
     );
+    if (serverRevision > 0) {
+      await _db.updateLastRevision('school', serverRevision);
+    }
   }
 
   Future<void> _persistRemoteCampus(Map<String, dynamic> campus) async {
+    final serverRevision = (campus['serverRevision'] as num?)?.toInt() ?? 0;
     await _db.upsertCampusProfile(
       CampusProfileCacheCompanion(
         id: Value('${campus['id']}'),
@@ -1288,12 +1293,15 @@ class SettingsService {
         address: Value(campus['address'] as String?),
         contactPhone: Value(campus['contactPhone'] as String?),
         registrationCode: Value(campus['registrationCode'] as String?),
-        serverRevision: Value(campus['serverRevision'] as int? ?? 0),
+        serverRevision: Value(serverRevision),
         deleted: Value(campus['deleted'] as bool? ?? false),
         createdAt: Value(DateTime.parse('${campus['createdAt']}')),
         updatedAt: Value(DateTime.parse('${campus['updatedAt']}')),
       ),
     );
+    if (serverRevision > 0) {
+      await _db.updateLastRevision('campus', serverRevision);
+    }
   }
 
   Future<Map<String, dynamic>> _updateLocalSchool({

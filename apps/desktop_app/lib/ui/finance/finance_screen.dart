@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:desktop_app/ui/finance/fee_structures_screen.dart';
 import 'package:desktop_app/ui/finance/finance_service.dart';
+import 'package:desktop_app/ui/finance/finance_reports_screen.dart';
 import 'package:desktop_app/ui/finance/invoices_screen.dart';
 import 'package:desktop_app/ui/finance/payments_screen.dart';
 
@@ -16,7 +17,7 @@ class FinanceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           const Material(
@@ -26,6 +27,7 @@ class FinanceScreen extends StatelessWidget {
                 Tab(text: 'Fee Structures'),
                 Tab(text: 'Invoices'),
                 Tab(text: 'Payments'),
+                Tab(text: 'Reports'),
               ],
             ),
           ),
@@ -35,6 +37,7 @@ class FinanceScreen extends StatelessWidget {
                 FeeStructuresScreen(service: service),
                 InvoicesScreen(service: service),
                 PaymentsScreen(service: service),
+                FinanceReportsScreen(service: service),
               ],
             ),
           ),

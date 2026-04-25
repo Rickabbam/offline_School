@@ -268,10 +268,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
               const SizedBox(width: 12),
               OutlinedButton.icon(
-                onPressed: _requestingReconciliation ||
-                        !data.canRequestReconciliation
-                    ? null
-                    : _requestReconciliation,
+                onPressed:
+                    _requestingReconciliation || !data.canRequestReconciliation
+                        ? null
+                        : _requestReconciliation,
                 icon: _requestingReconciliation
                     ? const SizedBox(
                         width: 16,
@@ -365,9 +365,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
               _StatusCard(
                 label: 'Audit Uploads',
                 value: data.pendingOperatorAuditLabel,
-                healthy:
-                    data.pilotChecks['Operator recovery audit flushed'] ??
-                        false,
+                healthy: data.pilotChecks['Operator recovery audit flushed'] ??
+                    false,
               ),
             ],
           ),
@@ -414,6 +413,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     .toList(),
                 emptyState: 'No admissions recorded locally yet.',
               ),
+              if (data.canViewAttendanceReports)
+                _SummaryPanel(
+                  title: 'Daily Attendance',
+                  items: const [],
+                  emptyState: '',
+                  child: _DailyAttendancePanel(
+                    items: data.dailyAttendanceSummaries,
+                  ),
+                ),
+              if (data.canViewAttendanceReports)
+                _SummaryPanel(
+                  title: 'Term Attendance',
+                  items: const [],
+                  emptyState: '',
+                  child: _TermAttendancePanel(
+                    items: data.termAttendanceSummaries,
+                  ),
+                ),
               _SummaryPanel(
                 title: 'Last Pulls',
                 items: data.lastPulls,
@@ -481,6 +498,72 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DailyAttendancePanel extends StatelessWidget {
+  const _DailyAttendancePanel({required this.items});
+
+  final List<DailyAttendanceSummaryView> items;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return Text(
+        'No attendance records captured yet.',
+        style: Theme.of(context).textTheme.bodyMedium,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: items
+          .map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                '${item.date} ${item.className}: '
+                'P ${item.present}, A ${item.absent}, '
+                'L ${item.late}, E ${item.excused} (${item.total})',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _TermAttendancePanel extends StatelessWidget {
+  const _TermAttendancePanel({required this.items});
+
+  final List<StudentTermAttendanceSummaryView> items;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return Text(
+        'No term attendance summaries available.',
+        style: Theme.of(context).textTheme.bodyMedium,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: items
+          .map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                '${item.studentName} | ${item.className} | ${item.termName}: '
+                'P ${item.present}, A ${item.absent}, '
+                'L ${item.late}, E ${item.excused} (${item.total})',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          )
+          .toList(),
     );
   }
 }

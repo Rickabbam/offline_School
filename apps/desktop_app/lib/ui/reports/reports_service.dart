@@ -48,6 +48,48 @@ class ReconciliationRequestView {
   final DateTime? acknowledgedAt;
 }
 
+class DailyAttendanceSummaryView {
+  const DailyAttendanceSummaryView({
+    required this.date,
+    required this.className,
+    required this.present,
+    required this.absent,
+    required this.late,
+    required this.excused,
+    required this.total,
+  });
+
+  final String date;
+  final String className;
+  final int present;
+  final int absent;
+  final int late;
+  final int excused;
+  final int total;
+}
+
+class StudentTermAttendanceSummaryView {
+  const StudentTermAttendanceSummaryView({
+    required this.studentName,
+    required this.className,
+    required this.termName,
+    required this.present,
+    required this.absent,
+    required this.late,
+    required this.excused,
+    required this.total,
+  });
+
+  final String studentName;
+  final String className;
+  final String termName;
+  final int present;
+  final int absent;
+  final int late;
+  final int excused;
+  final int total;
+}
+
 class ReportsWorkspaceData {
   const ReportsWorkspaceData({
     required this.summaryCounts,
@@ -75,6 +117,9 @@ class ReportsWorkspaceData {
     required this.pendingOperatorAuditItems,
     required this.recentBackups,
     required this.backupAuditEntries,
+    required this.dailyAttendanceSummaries,
+    required this.termAttendanceSummaries,
+    required this.canViewAttendanceReports,
     required this.isOnline,
     required this.isOfflineSession,
   });
@@ -104,6 +149,9 @@ class ReportsWorkspaceData {
   final List<String> pendingOperatorAuditItems;
   final List<String> recentBackups;
   final List<String> backupAuditEntries;
+  final List<DailyAttendanceSummaryView> dailyAttendanceSummaries;
+  final List<StudentTermAttendanceSummaryView> termAttendanceSummaries;
+  final bool canViewAttendanceReports;
   final bool isOnline;
   final bool isOfflineSession;
 }
@@ -143,6 +191,7 @@ class ReportsService {
       campusId: user.campusId,
     );
     final canViewOperationalData = _canViewOperationalReportData(user);
+    final canViewAttendanceReports = _canViewAttendanceReports(user);
     final students = canViewOperationalData
         ? await _db.getStudents(scope: scope)
         : const <Student>[];
@@ -309,6 +358,16 @@ class ReportsService {
     if (user.role == 'admin' && canViewOperationalData) {
       pilotChecks['Staff captured locally'] = staff.isNotEmpty;
     }
+    final attendanceReportData = canViewAttendanceReports
+        ? await _buildAttendanceReportData(
+            scope: scope,
+            students: students,
+            classArms: classArms,
+            terms: canViewOperationalData
+                ? await _db.getTerms(scope: scope)
+                : const <TermsCacheData>[],
+          )
+        : const _AttendanceReportData.empty();
 
     return ReportsWorkspaceData(
       summaryCounts: summaryCounts,
@@ -393,6 +452,9 @@ class ReportsService {
                 '${entry.timestamp.toString().substring(0, 19)} ${entry.eventType}: ${entry.message}',
           )
           .toList(growable: false),
+      dailyAttendanceSummaries: attendanceReportData.dailySummaries,
+      termAttendanceSummaries: attendanceReportData.termSummaries,
+      canViewAttendanceReports: canViewAttendanceReports,
       isOnline: _sync.isOnline,
       isOfflineSession: _auth.isOfflineSession,
     );
@@ -418,7 +480,8 @@ class ReportsService {
       throw StateError('This device is missing a registered fingerprint.');
     }
 
-    final response = await _auth.createAuthenticatedClient().post<Map<String, dynamic>>(
+    final response =
+        await _auth.createAuthenticatedClient().post<Map<String, dynamic>>(
       '/sync/reconciliation-requests',
       data: {
         'target_device_id': deviceId,
@@ -525,9 +588,11 @@ class ReportsService {
     );
   }
 
-  Future<void> createBackupNow() => _backup.createBackup(
+  Future<void> createBackupNow() => _backup
+          .createBackup(
         actor: _backupActor('manual_operator'),
-      ).then((backup) async {
+      )
+          .then((backup) async {
         await _queueAndFlushOperatorAuditEvent(
           'backup_created',
           actor: backup.actor,
@@ -543,11 +608,13 @@ class ReportsService {
     required String password,
     String? outputDirectoryPath,
   }) =>
-      _backup.exportEncryptedBackup(
+      _backup
+          .exportEncryptedBackup(
         actor: _backupActor('encrypted_export'),
         password: password,
         outputDirectoryPath: outputDirectoryPath,
-      ).then((exportInfo) async {
+      )
+          .then((exportInfo) async {
         await _queueAndFlushOperatorAuditEvent(
           'backup_export_encrypted',
           actor: _backupActor('encrypted_export'),
@@ -582,11 +649,13 @@ class ReportsService {
     required String filePath,
     required String password,
   }) =>
-      _backup.stageEncryptedRestorePackage(
+      _backup
+          .stageEncryptedRestorePackage(
         filePath: filePath,
         password: password,
         actor: _backupActor('restore_stage'),
-      ).then((staged) async {
+      )
+          .then((staged) async {
         await _queueAndFlushOperatorAuditEvent(
           'restore_package_staged',
           actor: _backupActor('restore_stage'),
@@ -613,15 +682,16 @@ class ReportsService {
     );
     _sync.suspendForRestart();
     return _backup.applyStagedRestore(
-        stagedRestore: stagedRestore,
-        actor: _backupActor('restore_apply'),
-      );
+      stagedRestore: stagedRestore,
+      actor: _backupActor('restore_apply'),
+    );
   }
 
-  Future<BackupValidationResult> runRestoreDrill() =>
-      _backup.runRestoreDrill(
+  Future<BackupValidationResult> runRestoreDrill() => _backup
+          .runRestoreDrill(
         actor: _backupActor('restore_drill'),
-      ).then((result) async {
+      )
+          .then((result) async {
         await _queueAndFlushOperatorAuditEvent(
           result.isValid ? 'restore_drill_passed' : 'restore_drill_failed',
           actor: _backupActor('restore_drill'),
@@ -651,6 +721,89 @@ class ReportsService {
     return user.role == 'admin' ||
         user.role == 'cashier' ||
         user.role == 'teacher';
+  }
+
+  bool _canViewAttendanceReports(AuthUser user) {
+    return user.role == 'admin' || user.role == 'teacher';
+  }
+
+  Future<_AttendanceReportData> _buildAttendanceReportData({
+    required LocalDataScope scope,
+    required List<Student> students,
+    required List<ClassArmsCacheData> classArms,
+    required List<TermsCacheData> terms,
+  }) async {
+    final studentsById = {for (final student in students) student.id: student};
+    final termsById = {for (final term in terms) term.id: term};
+    final dailyIndex = <String, _MutableDailyAttendanceSummary>{};
+    final termIndex = <String, _MutableStudentTermAttendanceSummary>{};
+
+    for (final classArm in classArms) {
+      final termIds = terms.map((term) => term.id).toSet();
+      final effectiveTermIds = termIds.isEmpty ? <String>{''} : termIds;
+      for (final termId in effectiveTermIds) {
+        final records = termId.isEmpty
+            ? const <AttendanceRecord>[]
+            : await _db.getAttendanceForClassTerm(
+                scope: scope,
+                classArmId: classArm.id,
+                termId: termId,
+              );
+        for (final record in records) {
+          final dailyKey = '${record.attendanceDate}|${record.classArmId}';
+          final daily = dailyIndex.putIfAbsent(
+            dailyKey,
+            () => _MutableDailyAttendanceSummary(
+              date: record.attendanceDate,
+              className: classArm.displayName,
+            ),
+          );
+          daily.add(record.status);
+
+          final student = studentsById[record.studentId];
+          final term = termsById[record.termId];
+          final termKey =
+              '${record.studentId}|${record.classArmId}|${record.termId}';
+          final termSummary = termIndex.putIfAbsent(
+            termKey,
+            () => _MutableStudentTermAttendanceSummary(
+              studentName: student == null
+                  ? record.studentId
+                  : '${student.firstName} ${student.lastName}',
+              className: classArm.displayName,
+              termName: term?.name ?? record.termId,
+            ),
+          );
+          termSummary.add(record.status);
+        }
+      }
+    }
+
+    final dailySummaries = dailyIndex.values
+        .map((summary) => summary.toImmutable())
+        .toList(growable: false)
+      ..sort((a, b) {
+        final dateCompare = b.date.compareTo(a.date);
+        return dateCompare != 0
+            ? dateCompare
+            : a.className.compareTo(b.className);
+      });
+    final termSummaries = termIndex.values
+        .map((summary) => summary.toImmutable())
+        .toList(growable: false)
+      ..sort((a, b) {
+        final termCompare = a.termName.compareTo(b.termName);
+        if (termCompare != 0) return termCompare;
+        final classCompare = a.className.compareTo(b.className);
+        return classCompare != 0
+            ? classCompare
+            : a.studentName.compareTo(b.studentName);
+      });
+
+    return _AttendanceReportData(
+      dailySummaries: dailySummaries.take(12).toList(growable: false),
+      termSummaries: termSummaries.take(12).toList(growable: false),
+    );
   }
 
   BackupActorContext _backupActor(String reason) {
@@ -689,4 +842,108 @@ class ReportsService {
       sync: _sync,
     );
   }
+}
+
+class _AttendanceReportData {
+  const _AttendanceReportData({
+    required this.dailySummaries,
+    required this.termSummaries,
+  });
+
+  const _AttendanceReportData.empty()
+      : dailySummaries = const <DailyAttendanceSummaryView>[],
+        termSummaries = const <StudentTermAttendanceSummaryView>[];
+
+  final List<DailyAttendanceSummaryView> dailySummaries;
+  final List<StudentTermAttendanceSummaryView> termSummaries;
+}
+
+class _MutableDailyAttendanceSummary {
+  _MutableDailyAttendanceSummary({
+    required this.date,
+    required this.className,
+  });
+
+  final String date;
+  final String className;
+  int present = 0;
+  int absent = 0;
+  int late = 0;
+  int excused = 0;
+
+  int get total => present + absent + late + excused;
+
+  void add(String status) {
+    switch (status) {
+      case 'present':
+        present += 1;
+        break;
+      case 'absent':
+        absent += 1;
+        break;
+      case 'late':
+        late += 1;
+        break;
+      case 'excused':
+        excused += 1;
+        break;
+    }
+  }
+
+  DailyAttendanceSummaryView toImmutable() => DailyAttendanceSummaryView(
+        date: date,
+        className: className,
+        present: present,
+        absent: absent,
+        late: late,
+        excused: excused,
+        total: total,
+      );
+}
+
+class _MutableStudentTermAttendanceSummary {
+  _MutableStudentTermAttendanceSummary({
+    required this.studentName,
+    required this.className,
+    required this.termName,
+  });
+
+  final String studentName;
+  final String className;
+  final String termName;
+  int present = 0;
+  int absent = 0;
+  int late = 0;
+  int excused = 0;
+
+  int get total => present + absent + late + excused;
+
+  void add(String status) {
+    switch (status) {
+      case 'present':
+        present += 1;
+        break;
+      case 'absent':
+        absent += 1;
+        break;
+      case 'late':
+        late += 1;
+        break;
+      case 'excused':
+        excused += 1;
+        break;
+    }
+  }
+
+  StudentTermAttendanceSummaryView toImmutable() =>
+      StudentTermAttendanceSummaryView(
+        studentName: studentName,
+        className: className,
+        termName: termName,
+        present: present,
+        absent: absent,
+        late: late,
+        excused: excused,
+        total: total,
+      );
 }

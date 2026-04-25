@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:desktop_app/auth/auth_service.dart';
 import 'package:desktop_app/database/app_database.dart';
@@ -496,5 +497,283 @@ void main() {
         as Map<String, dynamic>;
     expect(paymentPayload['status'], 'posted');
     expect(paymentPayload['amount'], 300.0);
+  });
+
+  test(
+      'builds offline finance reports from posted records with reversals and campus scope',
+      () async {
+    final category = await service.createFeeCategory(
+      name: 'Tuition',
+      billingTerm: 'per_term',
+      isActive: true,
+    );
+    await service.createFeeStructureItem(
+      feeCategoryId: '${category['id']}',
+      classLevelId: 'class-level-1',
+      termId: 'term-1',
+      amount: 450,
+      notes: 'Main term fee',
+    );
+
+    await db.upsertStudent(
+      StudentsCompanion.insert(
+        id: 'student-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        campusId: const Value('campus-1'),
+        firstName: 'Ama',
+        lastName: 'Mensah',
+        status: const Value('active'),
+        syncStatus: const Value('local'),
+      ),
+    );
+    await db.upsertClassArm(
+      ClassArmsCacheCompanion.insert(
+        id: 'arm-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        classLevelId: 'class-level-1',
+        arm: 'A',
+        displayName: 'Basic 1A',
+      ),
+    );
+    await db.upsertEnrollment(
+      EnrollmentsCompanion.insert(
+        id: 'enrollment-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        studentId: 'student-1',
+        classArmId: 'arm-1',
+        academicYearId: 'year-1',
+        enrollmentDate: '2026-09-02',
+      ),
+    );
+
+    await service.generateInvoices(termId: 'term-1');
+    final invoice = (await db.select(db.invoices).get()).single;
+    await service.transitionInvoiceStatus(
+      invoiceId: invoice.id,
+      targetStatus: 'confirmed',
+    );
+    await service.transitionInvoiceStatus(
+      invoiceId: invoice.id,
+      targetStatus: 'posted',
+    );
+
+    final firstPayment = await service.createPayment(
+      invoiceId: invoice.id,
+      amount: 300,
+      paymentMode: 'cash',
+      paymentDate: '2026-09-03',
+      reference: '',
+      notes: '',
+    );
+    await service.transitionPaymentStatus(
+      paymentId: '${firstPayment['id']}',
+      targetStatus: 'confirmed',
+    );
+    await service.transitionPaymentStatus(
+      paymentId: '${firstPayment['id']}',
+      targetStatus: 'posted',
+    );
+    await service.createPaymentReversal(
+      paymentId: '${firstPayment['id']}',
+      reason: 'Wrong receipt',
+    );
+
+    final secondPayment = await service.createPayment(
+      invoiceId: invoice.id,
+      amount: 100,
+      paymentMode: 'mtn_momo',
+      paymentDate: '2026-09-03',
+      reference: 'MOMO-1',
+      notes: '',
+    );
+    await service.transitionPaymentStatus(
+      paymentId: '${secondPayment['id']}',
+      targetStatus: 'confirmed',
+    );
+    await service.transitionPaymentStatus(
+      paymentId: '${secondPayment['id']}',
+      targetStatus: 'posted',
+    );
+
+    await db.upsertInvoice(
+      InvoicesCompanion.insert(
+        id: 'other-campus-invoice',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        campusId: const Value('campus-2'),
+        studentId: 'student-other-campus',
+        academicYearId: 'year-1',
+        termId: 'term-1',
+        classArmId: 'arm-1',
+        invoiceCode: 'INV-OTHER',
+        status: const Value('posted'),
+        lineItemsJson: '[]',
+        totalAmount: 999,
+        syncStatus: const Value('synced'),
+      ),
+    );
+
+    final report = await service.loadReportWorkspace();
+
+    expect(report.totalPostedInvoices, 450);
+    expect(report.totalCollected, 100);
+    expect(report.totalReversed, 300);
+    expect(report.totalOutstanding, 350);
+    expect(report.arrears, hasLength(1));
+    expect(report.arrears.single.studentName, 'Ama Mensah');
+    expect(report.arrears.single.className, 'Basic 1A');
+    expect(report.arrears.single.outstandingAmount, 350);
+    expect(report.dailyCollections, hasLength(1));
+    expect(report.dailyCollections.single.paymentDate, '2026-09-03');
+    expect(report.dailyCollections.single.paymentMode, 'mtn_momo');
+    expect(report.dailyCollections.single.totalAmount, 100);
+    expect(report.classSummaries, hasLength(1));
+    expect(report.classSummaries.single.invoiceCount, 1);
+    expect(report.classSummaries.single.billedAmount, 450);
+    expect(report.classSummaries.single.collectedAmount, 100);
+  });
+
+  test('generates and exports scoped PDF receipts for posted payments',
+      () async {
+    final now = DateTime.parse('2026-09-03T10:00:00Z');
+    await db.upsertSchoolProfile(
+      SchoolProfileCacheCompanion(
+        id: const Value('school-1'),
+        tenantId: const Value('tenant-1'),
+        name: const Value('Pilot Basic School'),
+        shortName: const Value('PBS'),
+        schoolType: const Value('basic'),
+        address: const Value('Market Road'),
+        region: const Value('Greater Accra'),
+        district: const Value('Ga East'),
+        contactPhone: const Value('0300000000'),
+        contactEmail: const Value('admin@example.com'),
+        onboardingDefaultsJson: const Value('{}'),
+        createdAt: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
+    await db.upsertCampusProfile(
+      CampusProfileCacheCompanion(
+        id: const Value('campus-1'),
+        tenantId: const Value('tenant-1'),
+        schoolId: const Value('school-1'),
+        name: const Value('Main Campus'),
+        address: const Value('Market Road'),
+        contactPhone: const Value('0300000000'),
+        registrationCode: const Value('MAIN'),
+        createdAt: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
+
+    final category = await service.createFeeCategory(
+      name: 'Tuition',
+      billingTerm: 'per_term',
+      isActive: true,
+    );
+    await service.createFeeStructureItem(
+      feeCategoryId: '${category['id']}',
+      classLevelId: 'class-level-1',
+      termId: 'term-1',
+      amount: 450,
+      notes: 'Main term fee',
+    );
+    await db.upsertStudent(
+      StudentsCompanion.insert(
+        id: 'student-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        campusId: const Value('campus-1'),
+        firstName: 'Ama',
+        lastName: 'Mensah',
+        status: const Value('active'),
+        syncStatus: const Value('local'),
+      ),
+    );
+    await db.upsertClassArm(
+      ClassArmsCacheCompanion.insert(
+        id: 'arm-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        classLevelId: 'class-level-1',
+        arm: 'A',
+        displayName: 'Basic 1A',
+      ),
+    );
+    await db.upsertEnrollment(
+      EnrollmentsCompanion.insert(
+        id: 'enrollment-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        studentId: 'student-1',
+        classArmId: 'arm-1',
+        academicYearId: 'year-1',
+        enrollmentDate: '2026-09-02',
+      ),
+    );
+
+    await service.generateInvoices(termId: 'term-1');
+    final invoice = (await db.select(db.invoices).get()).single;
+    await service.transitionInvoiceStatus(
+      invoiceId: invoice.id,
+      targetStatus: 'confirmed',
+    );
+    await service.transitionInvoiceStatus(
+      invoiceId: invoice.id,
+      targetStatus: 'posted',
+    );
+    final payment = await service.createPayment(
+      invoiceId: invoice.id,
+      amount: 300,
+      paymentMode: 'cash',
+      paymentDate: '2026-09-03',
+      reference: 'CASH-1',
+      notes: '',
+    );
+    await service.transitionPaymentStatus(
+      paymentId: '${payment['id']}',
+      targetStatus: 'confirmed',
+    );
+    await service.transitionPaymentStatus(
+      paymentId: '${payment['id']}',
+      targetStatus: 'posted',
+    );
+
+    final receipt = await service.loadPostedPaymentReceipt('${payment['id']}');
+    final pdfBytes =
+        await service.buildPostedPaymentReceiptPdf('${payment['id']}');
+    final outputDir = await Directory.systemTemp.createTemp('receipt-test-');
+    final file = await service.exportPostedPaymentReceiptPdf(
+      paymentId: '${payment['id']}',
+      outputDirectoryPath: outputDir.path,
+    );
+
+    expect(receipt.schoolName, 'Pilot Basic School');
+    expect(receipt.campusName, 'Main Campus');
+    expect(receipt.studentName, 'Ama Mensah');
+    expect(receipt.amountPaid, 300);
+    expect(receipt.outstandingAfterReceipt, 150);
+    expect(String.fromCharCodes(pdfBytes.take(4)), '%PDF');
+    expect(await file.exists(), isTrue);
+    expect(file.path.endsWith('.pdf'), isTrue);
+
+    await service.createPaymentReversal(
+      paymentId: '${payment['id']}',
+      reason: 'Wrong receipt',
+    );
+    await expectLater(
+      () => service.loadPostedPaymentReceipt('${payment['id']}'),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('Reversed payments'),
+        ),
+      ),
+    );
   });
 }

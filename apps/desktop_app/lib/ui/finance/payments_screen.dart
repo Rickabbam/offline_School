@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 
 import 'package:desktop_app/database/app_database.dart';
 import 'package:desktop_app/ui/finance/finance_service.dart';
@@ -64,6 +65,21 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     );
     if (result == true) {
       _reload();
+    }
+  }
+
+  Future<void> _showReceiptDialog(Payment payment) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => _ReceiptDialog(
+        service: widget.service,
+        payment: payment,
+      ),
+    );
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Receipt export completed.')),
+      );
     }
   }
 
@@ -204,6 +220,13 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                                       ),
                                     if (payment.status == 'posted' &&
                                         !isReversed)
+                                      OutlinedButton(
+                                        onPressed: () =>
+                                            _showReceiptDialog(payment),
+                                        child: const Text('Receipt'),
+                                      ),
+                                    if (payment.status == 'posted' &&
+                                        !isReversed)
                                       TextButton(
                                         onPressed: () =>
                                             _showReversalDialog(payment),
@@ -223,6 +246,186 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+class _ReceiptDialog extends StatefulWidget {
+  const _ReceiptDialog({
+    required this.service,
+    required this.payment,
+  });
+
+  final FinanceService service;
+  final Payment payment;
+
+  @override
+  State<_ReceiptDialog> createState() => _ReceiptDialogState();
+}
+
+class _ReceiptDialogState extends State<_ReceiptDialog> {
+  late Future<PaymentReceiptData> _future;
+  bool _printing = false;
+  bool _exporting = false;
+  String? _exportPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.service.loadPostedPaymentReceipt(widget.payment.id);
+  }
+
+  Future<void> _printReceipt() async {
+    setState(() => _printing = true);
+    try {
+      final bytes =
+          await widget.service.buildPostedPaymentReceiptPdf(widget.payment.id);
+      await Printing.layoutPdf(
+        name: 'Receipt ${widget.payment.paymentCode}',
+        onLayout: (_) async => bytes,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _printing = false);
+      }
+    }
+  }
+
+  Future<void> _exportReceipt() async {
+    setState(() => _exporting = true);
+    try {
+      final file = await widget.service.exportPostedPaymentReceiptPdf(
+        paymentId: widget.payment.id,
+      );
+      if (mounted) {
+        setState(() => _exportPath = file.path);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _exporting = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<PaymentReceiptData>(
+      future: _future,
+      builder: (context, snapshot) {
+        final receipt = snapshot.data;
+        return AlertDialog(
+          title: Text('Receipt ${widget.payment.paymentCode}'),
+          content: SizedBox(
+            width: 420,
+            child: snapshot.connectionState == ConnectionState.waiting
+                ? const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                : receipt == null
+                    ? const Text('Unable to load receipt details.')
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            receipt.schoolName,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(receipt.campusName),
+                          const Divider(height: 24),
+                          _ReceiptPreviewLine(
+                            label: 'Receipt',
+                            value: receipt.receiptNumber,
+                          ),
+                          _ReceiptPreviewLine(
+                            label: 'Student',
+                            value: receipt.studentName,
+                          ),
+                          _ReceiptPreviewLine(
+                            label: 'Invoice',
+                            value: receipt.invoice.invoiceCode,
+                          ),
+                          _ReceiptPreviewLine(
+                            label: 'Amount',
+                            value: receipt.amountPaid.toStringAsFixed(2),
+                          ),
+                          _ReceiptPreviewLine(
+                            label: 'Outstanding',
+                            value: receipt.outstandingAfterReceipt
+                                .toStringAsFixed(2),
+                          ),
+                          if (_exportPath != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              _exportPath!,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ],
+                      ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Close'),
+            ),
+            OutlinedButton.icon(
+              onPressed: receipt == null || _exporting ? null : _exportReceipt,
+              icon: _exporting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.picture_as_pdf_outlined),
+              label: Text(_exporting ? 'Exporting...' : 'Export PDF'),
+            ),
+            FilledButton.icon(
+              onPressed: receipt == null || _printing ? null : _printReceipt,
+              icon: _printing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.print_outlined),
+              label: Text(_printing ? 'Printing...' : 'Print'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ReceiptPreviewLine extends StatelessWidget {
+  const _ReceiptPreviewLine({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+          Expanded(child: Text(value)),
+        ],
+      ),
     );
   }
 }
