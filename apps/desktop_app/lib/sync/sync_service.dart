@@ -19,18 +19,22 @@ class SyncService {
   SyncService({
     required this.db,
     required AuthService auth,
-  }) : _auth = auth;
+    ConnectivitySource? connectivity,
+  })  : _auth = auth,
+        _connectivity = connectivity ?? ConnectivityMonitor();
 
   final AppDatabase db;
   final AuthService _auth;
   final _logger = Logger();
-  final ConnectivityMonitor _connectivity = ConnectivityMonitor();
+  final ConnectivitySource _connectivity;
 
   Timer? _pushTimer;
   Timer? _pullTimer;
   StreamSubscription<bool>? _connectivitySub;
-  late final VoidCallback _authListener;
+  VoidCallback? _authListener;
+  Future<void>? _startFuture;
   LocalDataScope? _lastReconciledScope;
+  bool _started = false;
   bool _suspendedForRestart = false;
   bool _remoteReconciliationInFlight = false;
   bool _pushCycleInFlight = false;
@@ -64,43 +68,77 @@ class SyncService {
     'staff_teaching_assignment',
   ];
 
-  void start() {
-    _authListener = _handleAuthChanged;
-    _auth.addListener(_authListener);
-    _connectivity.start().then((_) async {
+  Future<void> start() {
+    if (_startFuture != null) {
+      return _startFuture!;
+    }
+    _startFuture = _start();
+    return _startFuture!;
+  }
+
+  Future<void> _start() async {
+    if (_started || _suspendedForRestart) {
+      return;
+    }
+
+    final listener = _handleAuthChanged;
+    _authListener = listener;
+    _auth.addListener(listener);
+
+    try {
+      await _connectivity.start();
       _logger.i('SyncService started. Online: ${_connectivity.isOnline}');
-      await db.resetInProgressQueueItems();
+    } catch (error) {
+      _logger.w(
+        'Connectivity monitor failed during startup; sync will remain offline until restart: $error',
+      );
+    }
 
-      _pushTimer = Timer.periodic(_pushInterval, (_) => _runPushCycle());
-      _pullTimer = Timer.periodic(_pullInterval, (_) => _runPullCycle());
+    await db.resetInProgressQueueItems();
 
-      if (_connectivity.isOnline) {
+    if (_suspendedForRestart) {
+      return;
+    }
+
+    _pushTimer ??= Timer.periodic(_pushInterval, (_) => _runPushCycle());
+    _pullTimer ??= Timer.periodic(_pullInterval, (_) => _runPullCycle());
+
+    if (_connectivity.isOnline) {
+      _checkPendingRemoteReconciliation();
+      _runPushCycle();
+      _runPullCycle();
+    }
+
+    _connectivitySub ??=
+        _connectivity.onConnectivityChanged.listen((online) {
+      if (online) {
+        _logger.i('Back online - triggering sync.');
+        final callback = onConnectivityRestored;
+        if (callback != null) {
+          callback();
+        }
         _checkPendingRemoteReconciliation();
         _runPushCycle();
         _runPullCycle();
       }
-
-      _connectivitySub = _connectivity.onConnectivityChanged.listen((online) {
-        if (online) {
-          _logger.i('Back online - triggering sync.');
-          final callback = onConnectivityRestored;
-          if (callback != null) {
-            callback();
-          }
-          _checkPendingRemoteReconciliation();
-          _runPushCycle();
-          _runPullCycle();
-        }
-      });
     });
+    _started = true;
   }
 
   void dispose() {
     _pushTimer?.cancel();
     _pullTimer?.cancel();
     _connectivitySub?.cancel();
-    _auth.removeListener(_authListener);
+    _pushTimer = null;
+    _pullTimer = null;
+    _connectivitySub = null;
+    final listener = _authListener;
+    if (listener != null) {
+      _auth.removeListener(listener);
+    }
+    _authListener = null;
     _connectivity.dispose();
+    _started = false;
   }
 
   void suspendForRestart() {
@@ -108,7 +146,14 @@ class SyncService {
     _pushTimer?.cancel();
     _pullTimer?.cancel();
     _connectivitySub?.cancel();
-    _auth.removeListener(_authListener);
+    _pushTimer = null;
+    _pullTimer = null;
+    _connectivitySub = null;
+    final listener = _authListener;
+    if (listener != null) {
+      _auth.removeListener(listener);
+    }
+    _authListener = null;
   }
 
   Future<void> syncNow() async {

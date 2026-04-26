@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, EntityManager, Repository } from "typeorm";
 import * as bcrypt from "bcrypt";
@@ -31,6 +35,8 @@ export class OnboardingService {
     currentUserId: string,
     dto: BootstrapSchoolSetupDto,
   ) {
+    this.validateBootstrapDraft(dto);
+
     const currentUser = await this.users.findOne({
       where: { id: currentUserId, deleted: false, isActive: true },
     });
@@ -40,7 +46,11 @@ export class OnboardingService {
     }
 
     if (currentUser.tenantId || currentUser.schoolId || currentUser.campusId) {
-      if (!currentUser.tenantId || !currentUser.schoolId || !currentUser.campusId) {
+      if (
+        !currentUser.tenantId ||
+        !currentUser.schoolId ||
+        !currentUser.campusId
+      ) {
         throw new BadRequestException(
           "School setup is in an invalid partial state for this user.",
         );
@@ -454,6 +464,99 @@ export class OnboardingService {
     };
   }
 
+  private validateBootstrapDraft(dto: BootstrapSchoolSetupDto) {
+    const yearStart = this.parseDate(dto.academicYear.startDate);
+    const yearEnd = this.parseDate(dto.academicYear.endDate);
+    if (yearEnd < yearStart) {
+      throw new BadRequestException(
+        "Academic year end date cannot be before the start date.",
+      );
+    }
+
+    if (dto.academicYear.terms.length === 0) {
+      throw new BadRequestException(
+        "At least one academic term is required for onboarding.",
+      );
+    }
+
+    const currentTerms = dto.academicYear.terms.filter(
+      (term) => term.isCurrent,
+    );
+    if (currentTerms.length !== 1) {
+      throw new BadRequestException(
+        "Exactly one academic term must be marked as current.",
+      );
+    }
+
+    for (const term of dto.academicYear.terms) {
+      const termStart = this.parseDate(term.startDate);
+      const termEnd = this.parseDate(term.endDate);
+      if (termEnd < termStart) {
+        throw new BadRequestException(
+          `Academic term '${term.name}' end date cannot be before its start date.`,
+        );
+      }
+      if (termStart < yearStart || termEnd > yearEnd) {
+        throw new BadRequestException(
+          `Academic term '${term.name}' must fall inside the academic year.`,
+        );
+      }
+    }
+
+    if (dto.classLevels.length === 0) {
+      throw new BadRequestException(
+        "At least one class level is required for onboarding.",
+      );
+    }
+
+    for (const level of dto.classLevels) {
+      if (level.arms.length === 0) {
+        throw new BadRequestException(
+          `Class level '${level.name}' requires at least one class arm.`,
+        );
+      }
+    }
+
+    if (dto.subjects.length === 0) {
+      throw new BadRequestException(
+        "At least one subject is required for onboarding.",
+      );
+    }
+
+    if (dto.gradingScheme.bands.length === 0) {
+      throw new BadRequestException(
+        "At least one grading band is required for onboarding.",
+      );
+    }
+
+    const orderedBands = [...dto.gradingScheme.bands].sort(
+      (a, b) => a.min - b.min,
+    );
+    for (let index = 0; index < orderedBands.length; index += 1) {
+      const band = orderedBands[index];
+      if (band.max < band.min) {
+        throw new BadRequestException(
+          `Grading band '${band.grade}' maximum cannot be below its minimum.`,
+        );
+      }
+
+      const previous = orderedBands[index - 1];
+      if (previous && band.min <= previous.max) {
+        throw new BadRequestException(
+          `Grading band '${band.grade}' overlaps another grading band.`,
+        );
+      }
+    }
+  }
+
+  private parseDate(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(`Invalid onboarding date '${value}'.`);
+    }
+    return date;
+  }
+
   private buildBootstrapResponse(input: {
     tenant: Tenant;
     school: School;
@@ -465,14 +568,12 @@ export class OnboardingService {
     subjects: Subject[];
     gradingScheme: GradingScheme | null;
     user: User | null;
-    deviceRegistration:
-      | {
-          deviceId: string;
-          deviceName: string;
-          deviceFingerprint: string;
-          offlineToken: string;
-        }
-      | null;
+    deviceRegistration: {
+      deviceId: string;
+      deviceName: string;
+      deviceFingerprint: string;
+      offlineToken: string;
+    } | null;
   }) {
     return {
       tenant: {
@@ -520,9 +621,13 @@ export class OnboardingService {
           ? this.serializeEntity(input.academicYear)
           : null,
         terms: input.terms.map((term) => this.serializeEntity(term)),
-        classLevels: input.classLevels.map((level) => this.serializeEntity(level)),
+        classLevels: input.classLevels.map((level) =>
+          this.serializeEntity(level),
+        ),
         classArms: input.classArms.map((arm) => this.serializeEntity(arm)),
-        subjects: input.subjects.map((subject) => this.serializeEntity(subject)),
+        subjects: input.subjects.map((subject) =>
+          this.serializeEntity(subject),
+        ),
         gradingScheme: input.gradingScheme
           ? this.serializeEntity(input.gradingScheme)
           : null,

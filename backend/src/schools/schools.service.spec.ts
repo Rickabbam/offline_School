@@ -60,4 +60,63 @@ describe('SchoolsService', () => {
     expect(repo.findOne).not.toHaveBeenCalled();
     expect(repo.save).not.toHaveBeenCalled();
   });
+
+  it('does not allow create payloads to override tenant scope', async () => {
+    repo.create.mockImplementation((value) => value);
+    repo.save.mockImplementation(async (value) => value);
+
+    const result = await service.create('tenant-1', {
+      id: 'school-x',
+      tenantId: 'tenant-x',
+      name: 'Scoped School',
+    });
+
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        name: 'Scoped School',
+      }),
+    );
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        id: 'school-x',
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+      }),
+    );
+  });
+
+  it('does not allow update payloads to mutate school identity or tenant scope', async () => {
+    const existing = {
+      id: 'school-1',
+      tenantId: 'tenant-1',
+      name: 'Original',
+      deleted: false,
+    };
+    repo.findOne.mockResolvedValue(existing);
+    repo.save.mockImplementation(async (value) => value);
+
+    const result = await service.update(
+      'tenant-1',
+      'school-1',
+      {
+        id: 'school-x',
+        tenantId: 'tenant-x',
+        name: 'Renamed',
+      },
+      'school-1',
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 'school-1',
+        tenantId: 'tenant-1',
+        name: 'Renamed',
+        serverRevision: 1,
+      }),
+    );
+  });
 });

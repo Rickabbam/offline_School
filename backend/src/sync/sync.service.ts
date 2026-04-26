@@ -47,7 +47,8 @@ import { Enrollment, Guardian, Student } from "../students/student.entity";
 import { User } from "../users/user.entity";
 import { SyncPushReceipt } from "./sync-push-receipt.entity";
 import { SyncReconciliationRequest } from "./sync-reconciliation-request.entity";
-import { SyncEntityType, SyncPushRequestDto } from "./dto/sync.dto";
+import { SyncEntityType } from "../../../packages/contracts/src";
+import { SyncPushRequestDto } from "./dto/sync.dto";
 
 @Injectable()
 export class SyncService {
@@ -2621,7 +2622,13 @@ export class SyncService {
           order: { serverRevision: "ASC" as const },
           take,
         });
+      default:
+        return this.assertNeverSyncEntity(entityType);
     }
+  }
+
+  private assertNeverSyncEntity(entityType: never): never {
+    throw new BadRequestException(`Unsupported sync entity '${entityType}'.`);
   }
 
   private revisionScopedWhere<T extends Record<string, unknown>>(

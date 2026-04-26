@@ -84,6 +84,12 @@ class SettingsService {
       final remoteTenant = Map<String, dynamic>.from(tenantResponse.data!);
       final remoteSchool = Map<String, dynamic>.from(schoolResponse.data!);
       final remoteCampus = Map<String, dynamic>.from(campusResponse.data!);
+      _assertRemoteWorkspaceScope(
+        user: user,
+        tenant: remoteTenant,
+        school: remoteSchool,
+        campus: remoteCampus,
+      );
       final remoteYears = _asListOfMaps(yearsResponse.data);
       final remoteTerms = _asListOfMaps(termsResponse.data);
       final remoteClassLevels = _asListOfMaps(classLevelsResponse.data);
@@ -152,6 +158,31 @@ class SettingsService {
       queryParameters: {'limit': limit},
     );
     return _asListOfMaps(response.data);
+  }
+
+  void _assertRemoteWorkspaceScope({
+    required AuthUser user,
+    required Map<String, dynamic> tenant,
+    required Map<String, dynamic> school,
+    required Map<String, dynamic> campus,
+  }) {
+    if (tenant['id'] != user.tenantId) {
+      throw StateError(
+        'Remote tenant payload does not match the authenticated workspace.',
+      );
+    }
+    if (school['id'] != user.schoolId || school['tenantId'] != user.tenantId) {
+      throw StateError(
+        'Remote school payload does not match the authenticated workspace.',
+      );
+    }
+    if (campus['id'] != user.campusId ||
+        campus['schoolId'] != user.schoolId ||
+        campus['tenantId'] != user.tenantId) {
+      throw StateError(
+        'Remote campus payload does not match the authenticated workspace.',
+      );
+    }
   }
 
   Future<Map<String, dynamic>> updateSchool({
@@ -1655,7 +1686,8 @@ class SettingsService {
       throw StateError('Term not found in the active local scope.');
     }
 
-    final academicYearId = '${data['academicYearId'] ?? existing.academicYearId}';
+    final academicYearId =
+        '${data['academicYearId'] ?? existing.academicYearId}';
     await _requireAcademicYear(academicYearId);
     final now = DateTime.now();
     final name = '${data['name'] ?? existing.name}';
@@ -2077,7 +2109,8 @@ class SettingsService {
 
     final now = DateTime.now();
     final name = '${data['name'] ?? existing.name}';
-    final code = data.containsKey('code') ? data['code'] as String? : existing.code;
+    final code =
+        data.containsKey('code') ? data['code'] as String? : existing.code;
     await _db.transaction(() async {
       await _db.upsertSubject(
         SubjectsCacheCompanion(

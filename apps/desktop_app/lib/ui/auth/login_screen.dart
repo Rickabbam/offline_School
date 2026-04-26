@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:provider/provider.dart';
 
 import 'package:desktop_app/auth/auth_service.dart';
@@ -45,7 +46,8 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (e) {
       if (mounted) {
-        setState(() => _error = 'Login failed. Check your email and password.');
+        final auth = context.read<AuthService>();
+        setState(() => _error = loginFailureMessage(e, auth.backendBaseUrl));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -102,10 +104,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 12),
                     Text(
                       'offline_School',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.primary,
-                          ),
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.primary,
+                              ),
                     ),
                     const SizedBox(height: 32),
                     TextFormField(
@@ -145,7 +148,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       textInputAction: TextInputAction.done,
                       onFieldSubmitted: (_) => _submit(),
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'Password is required.';
+                        if (v == null || v.isEmpty) {
+                          return 'Password is required.';
+                        }
                         return null;
                       },
                     ),
@@ -177,8 +182,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: double.infinity,
                       height: 48,
                       child: FilledButton(
-                        onPressed:
-                            _loading || _offlineLoading ? null : _submit,
+                        onPressed: _loading || _offlineLoading ? null : _submit,
                         child: _loading
                             ? const SizedBox(
                                 width: 20,
@@ -236,4 +240,28 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
+
+@visibleForTesting
+String loginFailureMessage(Object error, String backendBaseUrl) {
+  if (error is DioException) {
+    final networkFailure = error.type == DioExceptionType.connectionError ||
+        error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.sendTimeout;
+    if (networkFailure || error.response == null) {
+      return 'Cannot reach the backend at $backendBaseUrl. Start the backend, then try again.';
+    }
+
+    final statusCode = error.response?.statusCode;
+    if (statusCode == 401) {
+      return 'Invalid email or password.';
+    }
+    if (statusCode == 400) {
+      return 'Login request was rejected. Check the email format and password.';
+    }
+    return 'Login failed with server status $statusCode.';
+  }
+
+  return 'Login failed. Try again.';
 }

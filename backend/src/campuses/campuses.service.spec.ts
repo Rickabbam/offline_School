@@ -113,4 +113,38 @@ describe('CampusesService', () => {
       service.update('tenant-1', 'campus-1', { name: 'Renamed' }, 'school-1'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('does not allow update payloads to mutate campus identity or scope', async () => {
+    const existing = {
+      id: 'campus-1',
+      tenantId: 'tenant-1',
+      schoolId: 'school-1',
+      name: 'Original',
+      deleted: false,
+    };
+    repo.findOne.mockResolvedValue(existing);
+    repo.save.mockImplementation(async (value) => value);
+
+    const result = await service.update(
+      'tenant-1',
+      'campus-1',
+      {
+        id: 'campus-x',
+        tenantId: 'tenant-x',
+        schoolId: 'school-x',
+        name: 'Renamed',
+      },
+      'school-1',
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 'campus-1',
+        tenantId: 'tenant-1',
+        schoolId: 'school-1',
+        name: 'Renamed',
+        serverRevision: 1,
+      }),
+    );
+  });
 });

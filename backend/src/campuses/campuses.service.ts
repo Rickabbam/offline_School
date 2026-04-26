@@ -39,7 +39,7 @@ export class CampusesService {
     const registrationCode =
       data.registrationCode?.trim() || uuidv4().split("-")[0].toUpperCase();
     const campus = this.repo.create({
-      ...data,
+      ...this.campusMutableFields(data),
       tenantId,
       schoolId,
       registrationCode,
@@ -58,7 +58,7 @@ export class CampusesService {
       where: { id, tenantId, schoolId, deleted: false },
     });
     if (!campus) throw new NotFoundException("Campus not found.");
-    Object.assign(campus, data, {
+    Object.assign(campus, this.campusMutableFields(data), {
       serverRevision: await this.nextServerRevision(),
     });
     return this.repo.save(campus);
@@ -80,5 +80,18 @@ export class CampusesService {
       "SELECT nextval('sync_server_revision_seq')::bigint AS revision",
     )) as { revision: string | number }[];
     return Number(result[0].revision);
+  }
+
+  private campusMutableFields(data: Partial<Campus>): Partial<Campus> {
+    return {
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.address !== undefined ? { address: data.address } : {}),
+      ...(data.contactPhone !== undefined
+        ? { contactPhone: data.contactPhone }
+        : {}),
+      ...(data.registrationCode !== undefined
+        ? { registrationCode: data.registrationCode }
+        : {}),
+    };
   }
 }

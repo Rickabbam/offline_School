@@ -27,7 +27,9 @@ describe("PlatformAdminService", () => {
       },
     ]);
 
-    await expect(service.listTenantSummaries()).resolves.toEqual([
+    const summaries = await service.listTenantSummaries();
+
+    expect(summaries).toEqual([
       {
         id: "tenant-1",
         name: "North Ridge Schools",
@@ -40,6 +42,18 @@ describe("PlatformAdminService", () => {
         workspaceStatus: "partial_registration",
         updatedAt: "2026-04-23T12:00:00.000Z",
       },
+    ]);
+    expect(Object.keys(summaries[0]).sort()).toEqual([
+      "campusCount",
+      "contactEmail",
+      "contactPhone",
+      "id",
+      "name",
+      "registeredCampusCount",
+      "schoolCount",
+      "status",
+      "updatedAt",
+      "workspaceStatus",
     ]);
   });
 
@@ -81,9 +95,9 @@ describe("PlatformAdminService", () => {
       },
     ]);
 
-    await expect(
-      service.listTenantSchoolSummaries("tenant-1"),
-    ).resolves.toEqual([
+    const summaries = await service.listTenantSchoolSummaries("tenant-1");
+
+    expect(summaries).toEqual([
       {
         id: "school-1",
         tenantId: "tenant-1",
@@ -100,9 +114,45 @@ describe("PlatformAdminService", () => {
         updatedAt: "2026-04-23T14:00:00.000Z",
       },
     ]);
+    expect(Object.keys(summaries[0]).sort()).toEqual([
+      "campusCount",
+      "district",
+      "id",
+      "name",
+      "region",
+      "registeredCampusCount",
+      "schoolType",
+      "shortName",
+      "tenantId",
+      "tenantName",
+      "tenantStatus",
+      "updatedAt",
+      "workspaceStatus",
+    ]);
 
     expect(dataSource.query).toHaveBeenCalledWith(expect.any(String), [
       "tenant-1",
     ]);
+  });
+
+  it("does not query operational school records for platform summaries", async () => {
+    dataSource.query.mockResolvedValue([]);
+
+    await service.listTenantSummaries();
+    await service.listTenantSchoolSummaries("tenant-1");
+
+    const issuedSql = dataSource.query.mock.calls
+      .map(([sql]) => String(sql).toLowerCase())
+      .join("\n");
+
+    expect(issuedSql).toContain("from tenants");
+    expect(issuedSql).toContain("from schools");
+    expect(issuedSql).toContain("left join campuses");
+    expect(issuedSql).not.toContain("students");
+    expect(issuedSql).not.toContain("guardians");
+    expect(issuedSql).not.toContain("attendance");
+    expect(issuedSql).not.toContain("invoices");
+    expect(issuedSql).not.toContain("payments");
+    expect(issuedSql).not.toContain("sync_queue");
   });
 });

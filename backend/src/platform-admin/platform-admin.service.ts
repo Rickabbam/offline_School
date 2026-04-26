@@ -1,4 +1,9 @@
 import { Injectable } from "@nestjs/common";
+import type {
+  PlatformWorkspaceStatus,
+  SchoolPlatformSummary,
+  TenantPlatformSummary,
+} from "../../../packages/contracts/src";
 import { DataSource } from "typeorm";
 
 type TenantPlatformSummaryRow = {
@@ -32,7 +37,7 @@ type SchoolPlatformSummaryRow = {
 export class PlatformAdminService {
   constructor(private readonly dataSource: DataSource) {}
 
-  async listTenantSummaries() {
+  async listTenantSummaries(): Promise<TenantPlatformSummary[]> {
     const rows = (await this.dataSource.query(
       `
         SELECT
@@ -77,7 +82,9 @@ export class PlatformAdminService {
     return rows.map((row) => this.mapTenantSummary(row));
   }
 
-  async listTenantSchoolSummaries(tenantId: string) {
+  async listTenantSchoolSummaries(
+    tenantId: string,
+  ): Promise<SchoolPlatformSummary[]> {
     const rows = (await this.dataSource.query(
       `
         SELECT
@@ -127,7 +134,9 @@ export class PlatformAdminService {
     return rows.map((row) => this.mapSchoolSummary(row));
   }
 
-  private mapTenantSummary(row: TenantPlatformSummaryRow) {
+  private mapTenantSummary(
+    row: TenantPlatformSummaryRow,
+  ): TenantPlatformSummary {
     const campusCount = Number(row.campusCount);
     const registeredCampusCount = Number(row.registeredCampusCount);
 
@@ -149,7 +158,9 @@ export class PlatformAdminService {
     };
   }
 
-  private mapSchoolSummary(row: SchoolPlatformSummaryRow) {
+  private mapSchoolSummary(
+    row: SchoolPlatformSummaryRow,
+  ): SchoolPlatformSummary {
     const campusCount = Number(row.campusCount);
     const registeredCampusCount = Number(row.registeredCampusCount);
 
@@ -178,16 +189,16 @@ export class PlatformAdminService {
     tenantStatus: string;
     campusCount: number;
     registeredCampusCount: number;
-  }) {
+  }): PlatformWorkspaceStatus {
     if (input.tenantStatus === "suspended") {
-      return "attention" as const;
+      return "attention";
     }
     if (input.campusCount === 0) {
-      return "needs_setup" as const;
+      return "needs_setup";
     }
     if (input.registeredCampusCount < input.campusCount) {
-      return "partial_registration" as const;
+      return "partial_registration";
     }
-    return "operational" as const;
+    return "operational";
   }
 }

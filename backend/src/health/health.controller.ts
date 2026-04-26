@@ -4,6 +4,8 @@ import {
   HealthCheck,
   TypeOrmHealthIndicator,
   MemoryHealthIndicator,
+  HealthCheckError,
+  HealthIndicatorResult,
 } from '@nestjs/terminus';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Inject } from '@nestjs/common';
@@ -26,11 +28,44 @@ export class HealthController {
   check() {
     return this.health.check([
       () => this.db.pingCheck('database'),
+      () => this.checkMigrations(),
       () => this.memory.checkHeap('memory_heap', 300 * 1024 * 1024),
-      async () => {
-        await this.redis.ping();
-        return { redis: { status: 'up' } };
-      },
+      () => this.checkRedis(),
     ]);
+  }
+
+  private async checkMigrations(): Promise<HealthIndicatorResult> {
+    const pending = await this.dataSource.showMigrations();
+    if (pending) {
+      throw new HealthCheckError('Database migrations are pending', {
+        migrations: {
+          status: 'down' as const,
+          pending: true,
+        },
+      });
+    }
+
+    return {
+      migrations: {
+        status: 'up' as const,
+        pending: false,
+      },
+    };
+  }
+
+  private async checkRedis(): Promise<HealthIndicatorResult> {
+    let timeout: NodeJS.Timeout | undefined;
+    await Promise.race([
+      this.redis.ping(),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('Redis ping timed out')), 2000);
+      }),
+    ]).finally(() => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    });
+
+    return { redis: { status: 'up' as const } };
   }
 }

@@ -56,15 +56,21 @@ enum AuthState { unknown, authenticated, unauthenticated }
 /// On startup, [initialise] checks for a stored token.
 /// The rest of the app reads [currentUser] and [state] to decide what to show.
 class AuthService extends ChangeNotifier {
-  AuthService({String? backendBaseUrl})
-      : _baseUrl = backendBaseUrl ??
+  AuthService({
+    String? backendBaseUrl,
+    TokenStorage? storage,
+    Dio Function()? dioFactory,
+  })  : _baseUrl = backendBaseUrl ??
             const String.fromEnvironment(
               'BACKEND_URL',
               defaultValue: 'http://localhost:3000',
-            );
+            ),
+        _storage = storage ?? TokenStorage(),
+        _dioFactory = dioFactory;
 
   final String _baseUrl;
-  final _storage = TokenStorage();
+  final TokenStorage _storage;
+  final Dio Function()? _dioFactory;
   final _logger = Logger();
   final _uuid = const Uuid();
 
@@ -79,6 +85,7 @@ class AuthService extends ChangeNotifier {
   AuthState get state => _state;
   bool get isAuthenticated => _state == AuthState.authenticated;
   bool get isOfflineSession => _isOfflineSession;
+  String get backendBaseUrl => _baseUrl;
 
   Future<String?> getDeviceFingerprint() => _storage.getDeviceFingerprint();
   Future<String> ensureDeviceFingerprint() => _getOrCreateDeviceFingerprint();
@@ -100,6 +107,7 @@ class AuthService extends ChangeNotifier {
     _dio = _buildDio();
 
     final userJson = await _storage.getUserJson();
+    final trustedUserJson = await _storage.getTrustedUserJson();
     final accessToken = await _storage.getAccessToken();
     if (accessToken != null && userJson != null) {
       _dio.options.headers['Authorization'] = 'Bearer $accessToken';
@@ -167,9 +175,11 @@ class AuthService extends ChangeNotifier {
         );
       }
 
-      if (userJson != null) {
-        _currentUser =
-            AuthUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
+      final offlineUserJson = userJson ?? trustedUserJson;
+      if (offlineUserJson != null) {
+        _currentUser = AuthUser.fromJson(
+          jsonDecode(offlineUserJson) as Map<String, dynamic>,
+        );
         _isOfflineSession = true;
         _state = AuthState.authenticated;
         _logger.i('Authenticated offline via device token.');
@@ -281,7 +291,8 @@ class AuthService extends ChangeNotifier {
           },
         );
       } catch (error) {
-        _logger.w('Online logout call failed, clearing local session anyway: $error');
+        _logger.w(
+            'Online logout call failed, clearing local session anyway: $error');
       }
     }
     await _storage.clearSession();
@@ -370,7 +381,8 @@ class AuthService extends ChangeNotifier {
     final response = await _dio.get<Map<String, dynamic>>('/auth/me');
     final data = response.data;
     if (data == null) {
-      throw StateError('Authenticated session recovery returned no user payload.');
+      throw StateError(
+          'Authenticated session recovery returned no user payload.');
     }
 
     final user = AuthUser.fromJson(data);
@@ -493,6 +505,11 @@ class AuthService extends ChangeNotifier {
   }
 
   Dio _buildDio() {
+    final injected = _dioFactory?.call();
+    if (injected != null) {
+      return injected;
+    }
+
     return Dio(BaseOptions(
       baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 10),

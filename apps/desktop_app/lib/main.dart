@@ -39,7 +39,7 @@ Future<void> main() async {
       sync: syncService,
     );
   };
-  syncService.start();
+  await syncService.start();
   authService.addListener(() {
     unawaited(
       () async {

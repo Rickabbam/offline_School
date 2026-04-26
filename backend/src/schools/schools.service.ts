@@ -37,7 +37,7 @@ export class SchoolsService {
   async create(tenantId: string, data: Partial<School>) {
     return this.repo.save(
       this.repo.create({
-        ...data,
+        ...this.schoolMutableFields(data),
         tenantId,
         serverRevision: await this.nextServerRevision(),
       }),
@@ -62,7 +62,7 @@ export class SchoolsService {
       },
     });
     if (!school) throw new NotFoundException("School not found.");
-    Object.assign(school, data, {
+    Object.assign(school, this.schoolMutableFields(data), {
       serverRevision: await this.nextServerRevision(),
     });
     return this.repo.save(school);
@@ -83,5 +83,25 @@ export class SchoolsService {
       "SELECT nextval('sync_server_revision_seq')::bigint AS revision",
     )) as { revision: string | number }[];
     return Number(result[0].revision);
+  }
+
+  private schoolMutableFields(data: Partial<School>): Partial<School> {
+    return {
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.shortName !== undefined ? { shortName: data.shortName } : {}),
+      ...(data.schoolType !== undefined ? { schoolType: data.schoolType } : {}),
+      ...(data.address !== undefined ? { address: data.address } : {}),
+      ...(data.region !== undefined ? { region: data.region } : {}),
+      ...(data.district !== undefined ? { district: data.district } : {}),
+      ...(data.contactPhone !== undefined
+        ? { contactPhone: data.contactPhone }
+        : {}),
+      ...(data.contactEmail !== undefined
+        ? { contactEmail: data.contactEmail }
+        : {}),
+      ...(data.onboardingDefaults !== undefined
+        ? { onboardingDefaults: data.onboardingDefaults }
+        : {}),
+    };
   }
 }

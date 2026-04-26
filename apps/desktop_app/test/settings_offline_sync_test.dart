@@ -141,7 +141,8 @@ void main() {
     expect(payload['academicYearId'], 'year-1');
   });
 
-  test('rejects offline term creation when parent academic year is out of scope',
+  test(
+      'rejects offline term creation when parent academic year is out of scope',
       () async {
     await expectLater(
       service.createTerm(
@@ -343,5 +344,70 @@ void main() {
     expect(conflicts.single.entityType, 'term');
     expect(conflicts.single.entityId, 'term-1');
     expect(conflicts.single.conflictType, 'pull_deferred');
+  });
+
+  test('online workspace refresh rejects mismatched remote workspace scope',
+      () async {
+    final now = DateTime.parse('2026-04-23T12:00:00.000Z');
+    service = SettingsService(
+      _OnlineAuthService({
+        '/tenants/current': {
+          'id': 'tenant-1',
+          'name': 'Pilot Tenant',
+          'status': 'active',
+          'contactEmail': 'pilot@example.com',
+          'contactPhone': '0200000000',
+          'deleted': false,
+          'createdAt': now.toIso8601String(),
+          'updatedAt': now.toIso8601String(),
+        },
+        '/schools/school-1': {
+          'id': 'school-1',
+          'tenantId': 'tenant-other',
+          'name': 'Wrong Tenant School',
+          'shortName': 'WTS',
+          'schoolType': 'basic',
+          'address': null,
+          'region': null,
+          'district': null,
+          'contactPhone': null,
+          'contactEmail': null,
+          'onboardingDefaults': const <String, dynamic>{},
+          'serverRevision': 8,
+          'deleted': false,
+          'createdAt': now.toIso8601String(),
+          'updatedAt': now.toIso8601String(),
+        },
+        '/campuses/campus-1': {
+          'id': 'campus-1',
+          'tenantId': 'tenant-1',
+          'schoolId': 'school-1',
+          'name': 'Main Campus',
+          'address': null,
+          'contactPhone': null,
+          'registrationCode': 'MAIN',
+          'serverRevision': 9,
+          'deleted': false,
+          'createdAt': now.toIso8601String(),
+          'updatedAt': now.toIso8601String(),
+        },
+        '/academic/years': <Map<String, dynamic>>[],
+        '/academic/terms': <Map<String, dynamic>>[],
+        '/academic/class-levels': <Map<String, dynamic>>[],
+        '/academic/class-arms': <Map<String, dynamic>>[],
+        '/academic/subjects': <Map<String, dynamic>>[],
+        '/academic/grading-schemes': <Map<String, dynamic>>[],
+        '/devices/trusted': <Map<String, dynamic>>[],
+        '/audit/logs': <Map<String, dynamic>>[],
+      }),
+      db,
+    );
+
+    await expectLater(service.loadWorkspace(), throwsStateError);
+    expect(
+      await db.getSchoolProfile(tenantId: 'tenant-other', schoolId: 'school-1'),
+      null,
+    );
+    expect(await db.getLastRevision('school'), 0);
   });
 }

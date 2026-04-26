@@ -9,33 +9,15 @@ import {
   Min,
   ValidateNested,
 } from "class-validator";
+import {
+  SyncEntityType,
+  SyncOperation,
+  SyncPushRequestEnvelope,
+  syncEntityTypes,
+  syncOperations,
+} from "../../../../packages/contracts/src";
 
-export const syncEntityTypes = [
-  "student",
-  "guardian",
-  "enrollment",
-  "fee_category",
-  "fee_structure_item",
-  "invoice",
-  "payment",
-  "payment_reversal",
-  "staff",
-  "applicant",
-  "attendance_record",
-  "academic_year",
-  "term",
-  "class_level",
-  "class_arm",
-  "subject",
-  "school",
-  "campus",
-  "grading_scheme",
-  "staff_teaching_assignment",
-] as const;
-
-export type SyncEntityType = (typeof syncEntityTypes)[number];
-
-export class SyncPushRequestDto {
+export class SyncPushRequestDto implements SyncPushRequestEnvelope {
   @IsString()
   idempotency_key: string;
 
@@ -57,8 +39,8 @@ export class SyncPushRequestDto {
   entity_id: string;
 
   @IsString()
-  @IsIn(["create", "update", "delete"])
-  operation: "create" | "update" | "delete";
+  @IsIn(syncOperations)
+  operation: SyncOperation;
 
   @IsObject()
   payload: Record<string, unknown>;
